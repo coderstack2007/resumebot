@@ -1,9 +1,11 @@
 <?php
 namespace App\Backs;
 
-use App\Keyboards\LanguageKeyboard;
-use App\Keyboards\NameKeyboard;
-use App\Keyboards\CitiesKeyboard;
+use App\Keyboards\ru\LanguageKeyboard;
+use App\Keyboards\ru\NameKeyboard;
+use App\Keyboards\ru\CitiesKeyboard;
+use App\Keyboards\ru\JobsKeyboard;
+use App\Checking\ru\Check;
 
 class BackHandler
 {
@@ -15,7 +17,8 @@ class BackHandler
         return in_array($user_text, [
             '⬅️ Назад к выбору языка',
             '⬅️ Назад',
-            '⬅️ Назад к регионам'
+            '⬅️ Назад к регионам',
+            '⬅️ Назад к городам'
         ]);
     }
     
@@ -37,6 +40,9 @@ class BackHandler
             case '⬅️ Назад к регионам':
                 return self::handleBackToRegions($telegram, $chat_id, $user_states);
                 
+            case '⬅️ Назад к городам':
+                return self::handleBackToCities($telegram, $chat_id, $user_states);
+                
             default:
                 return false;
         }
@@ -47,12 +53,14 @@ class BackHandler
      */
     private static function handleBackToLanguage($telegram, $chat_id, &$user_states)
     {
-        // Сбрасываем состояние
-        unset($user_states[$chat_id]);
+        // Возвращаемся к выбору языка
+        $user_states[$chat_id] = [
+            'state' => 'choosing_language'
+        ];
         
         $telegram->sendMessage([
             'chat_id' => $chat_id,
-            'text' => 'Выберите язык:',
+            'text' => "Выберите язык:",
             'reply_markup' => LanguageKeyboard::getLanguageKeyboard()
         ]);
         
@@ -84,12 +92,22 @@ class BackHandler
         } elseif ($step == 3) {
             // Возврат к вводу возраста
             $user_states[$chat_id]['step'] = 2;
+            unset($user_states[$chat_id]['phone']);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => "🎂 Теперь введите ваш возраст (15-60 лет):",
+                'reply_markup' => NameKeyboard::getBackName()
+            ]);
+        } elseif ($step == 4) {
+            // Возврат к вводу телефона
+            $user_states[$chat_id]['step'] = 3;
             unset($user_states[$chat_id]['region_id']);
             unset($user_states[$chat_id]['city_id']);
             
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
-                'text' => "🎂 Теперь введите ваш возраст (15-60 лет):",
+                'text' => Check::getAgeAcceptedMessage(),
                 'reply_markup' => NameKeyboard::getBackName()
             ]);
         }
@@ -106,14 +124,43 @@ class BackHandler
             return false;
         }
         
-        $user_states[$chat_id]['step'] = 3;
+        $user_states[$chat_id]['step'] = 4;
         unset($user_states[$chat_id]['region_id']);
         unset($user_states[$chat_id]['city_id']);
+        unset($user_states[$chat_id]['job_id']);
         
         $telegram->sendMessage([
             'chat_id' => $chat_id,
             'text' => "📍 Выберите ваш регион:",
             'reply_markup' => CitiesKeyboard::getRegionsKeyboard()
+        ]);
+        
+        return true;
+    }
+    
+    /**
+     * Обработка кнопки "Назад к городам"
+     */
+    private static function handleBackToCities($telegram, $chat_id, &$user_states)
+    {
+        if (!isset($user_states[$chat_id])) {
+            return false;
+        }
+        
+        $region_id = $user_states[$chat_id]['region_id'] ?? null;
+        
+        if (!$region_id) {
+            return false;
+        }
+        
+        $user_states[$chat_id]['step'] = 5;
+        unset($user_states[$chat_id]['city_id']);
+        unset($user_states[$chat_id]['job_id']);
+        
+        $telegram->sendMessage([
+            'chat_id' => $chat_id,
+            'text' => "🏙 Выберите ваш город:",
+            'reply_markup' => CitiesKeyboard::getCitiesKeyboard($region_id)
         ]);
         
         return true;

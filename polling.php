@@ -3,7 +3,7 @@ require_once 'vendor/autoload.php';
 
 use Telegram\Bot\Api;
 use App\BotSettings;
-use App\Keyboards\LanguageKeyboard;
+use App\Keyboards\ru\LanguageKeyboard;
 use App\Info\RuInfoHandler;
 
 $telegram = new Api(BotSettings::TOKEN);
@@ -33,7 +33,7 @@ while (true) {
                 $user_text = trim($update['message']['text']);
                 $message_id = $update['message']['message_id'];
                 
-                // Обработка /start
+                // Обработка /start - показываем главное меню
                 if (strtolower($user_text) === '/start') {
                     // Сбрасываем состояние при /start
                     if (isset($user_states[$chat_id])) {
@@ -42,15 +42,18 @@ while (true) {
                     
                     $telegram->sendMessage([
                         'chat_id' => $chat_id,
-                        'text' => 'Выберите язык:',
-                        'reply_markup' => LanguageKeyboard::getLanguageKeyboard()
+                        'text' => "👋 Добро пожаловать в систему подбора резюме!\n\nНажмите кнопку ниже, чтобы начать:",
+                        'reply_markup' => LanguageKeyboard::getMainMenu()
                     ]);
                     echo "✅ Обработан /start от $chat_id\n";
                     continue;
                 }
                 
-                // Обработка выбора языка
-                if ($user_text === '🇷🇺 Русский') {
+                // Проверяем, находится ли пользователь в процессе заполнения резюме
+                $is_in_process = isset($user_states[$chat_id]) && isset($user_states[$chat_id]['step']);
+                
+                // Обработка кнопки "Оставить резюме" - показываем выбор языка
+                if (LanguageKeyboard::isResumeButton($user_text)) {
                     // Удаляем сообщение пользователя
                     try {
                         $telegram->deleteMessage([
@@ -61,26 +64,25 @@ while (true) {
                         echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
                     }
                     
-                    // Устанавливаем состояние
+                    // Устанавливаем состояние "выбор языка"
                     $user_states[$chat_id] = [
-                        'state' => 'waiting_for_name',
-                        'step' => 1,
-                        'language' => 'ru'
+                        'state' => 'choosing_language'
                     ];
                     
-                    $text = RuInfoHandler::getStartMessage();
-                    $keyboard = LanguageKeyboard::getBackKeyboard();
-                    
                     $telegram->sendMessage([
                         'chat_id' => $chat_id,
-                        'text' => $text,
-                        'reply_markup' => $keyboard
+                        'text' => "Выберите язык:",
+                        'reply_markup' => LanguageKeyboard::getLanguageKeyboard()
                     ]);
-                    echo "✅ Выбран русский язык от $chat_id\n";
+                    echo "✅ Показан выбор языка для $chat_id\n";
                     continue;
                 }
                 
-                if ($user_text === "🇺🇿 O'zbekcha") {
+                // Обработка выбора языка (после нажатия "Оставить резюме")
+                if (LanguageKeyboard::isLanguageButton($user_text) && 
+                    isset($user_states[$chat_id]) && 
+                    $user_states[$chat_id]['state'] === 'choosing_language') {
+                    
                     // Удаляем сообщение пользователя
                     try {
                         $telegram->deleteMessage([
@@ -91,18 +93,91 @@ while (true) {
                         echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
                     }
                     
-                    // Здесь добавьте обработку узбекского языка
-                    $telegram->sendMessage([
-                        'chat_id' => $chat_id,
-                        'text' => "✅ Til tanlandi: O'zbekcha",
-                        'reply_markup' => LanguageKeyboard::getBackKeyboard()
-                    ]);
-                    echo "✅ Выбран узбекский язык от $chat_id\n";
+                    // Устанавливаем язык и начинаем процесс
+                    if ($user_text === '🇷🇺 Русский') {
+                        $user_states[$chat_id] = [
+                            'state' => 'waiting_for_name',
+                            'step' => 1,
+                            'language' => 'ru'
+                        ];
+                        
+                        $text = RuInfoHandler::getStartMessage();
+                        $keyboard = LanguageKeyboard::getBackKeyboard();
+                        
+                        $telegram->sendMessage([
+                            'chat_id' => $chat_id,
+                            'text' => $text,
+                            'reply_markup' => $keyboard
+                        ]);
+                        echo "✅ Выбран русский язык, начат процесс от $chat_id\n";
+                    } elseif ($user_text === "🇺🇿 O'zbekcha") {
+                        $user_states[$chat_id] = [
+                            'state' => 'waiting_for_name',
+                            'step' => 1,
+                            'language' => 'uz'
+                        ];
+                        
+                        // Здесь добавьте обработку узбекского языка
+                        $telegram->sendMessage([
+                            'chat_id' => $chat_id,
+                            'text' => "✅ Til tanlandi: O'zbekcha\n\nIltimos, FIOingizni kiriting:",
+                            'reply_markup' => LanguageKeyboard::getBackKeyboard()
+                        ]);
+                        echo "✅ Выбран узбекский язык, начат процесс от $chat_id\n";
+                    }
+                    
                     continue;
                 }
                 
-                // Обработка ввода данных если пользователь в процессе
-                if (isset($user_states[$chat_id])) {
+                // Если получили неизвестную команду и пользователь не в процессе
+                if (!$is_in_process && 
+                    (!isset($user_states[$chat_id]) || $user_states[$chat_id]['state'] !== 'choosing_language')) {
+                    
+                    // Удаляем сообщение пользователя
+                    try {
+                        $telegram->deleteMessage([
+                            'chat_id' => $chat_id,
+                            'message_id' => $message_id
+                        ]);
+                    } catch (\Exception $e) {
+                        echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
+                    }
+                    
+                    $telegram->sendMessage([
+                        'chat_id' => $chat_id,
+                        'text' => "❌ Неправильный выбор. Пожалуйста, используйте кнопку:",
+                        'reply_markup' => LanguageKeyboard::getMainMenu()
+                    ]);
+                    echo "⚠️ Неправильный выбор от $chat_id: $user_text\n";
+                    continue;
+                }
+                
+                // Если пользователь на этапе выбора языка, но ввел что-то не то
+                if (isset($user_states[$chat_id]) && 
+                    $user_states[$chat_id]['state'] === 'choosing_language' &&
+                    !LanguageKeyboard::isLanguageButton($user_text)) {
+                    
+                    // Удаляем сообщение пользователя
+                    try {
+                        $telegram->deleteMessage([
+                            'chat_id' => $chat_id,
+                            'message_id' => $message_id
+                        ]);
+                    } catch (\Exception $e) {
+                        echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
+                    }
+                    
+                    $telegram->sendMessage([
+                        'chat_id' => $chat_id,
+                        'text' => "❌ Неправильный выбор. Пожалуйста, выберите язык:",
+                        'reply_markup' => LanguageKeyboard::getLanguageKeyboard()
+                    ]);
+                    echo "⚠️ Неправильный выбор языка от $chat_id: $user_text\n";
+                    continue;
+                }
+                
+                // Обработка ввода данных если пользователь в процессе заполнения
+                if ($is_in_process) {
                     $user_state = $user_states[$chat_id];
                     
                     // Обработка в зависимости от выбранного языка
@@ -111,7 +186,10 @@ while (true) {
                             RuInfoHandler::handleUserInput($telegram, $chat_id, $user_text, $message_id, $user_states);
                             break;
                             
-                        
+                        case 'uz':
+                            // Добавьте обработчик для узбекского языка
+                            // UzInfoHandler::handleUserInput($telegram, $chat_id, $user_text, $message_id, $user_states);
+                            break;
                     }
                 }
             }

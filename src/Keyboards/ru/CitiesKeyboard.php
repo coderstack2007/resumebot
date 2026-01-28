@@ -1,5 +1,5 @@
 <?php
-namespace App\Keyboards;
+namespace App\Keyboards\ru;
 
 use App\Cities\RuCities;
 

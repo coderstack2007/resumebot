@@ -1,12 +1,15 @@
 <?php
 namespace App\Info;
 
-use App\Keyboards\LanguageKeyboard;
-use App\Keyboards\NameKeyboard;
-use App\Keyboards\CitiesKeyboard;
-use App\Checking\RuCheck;
+use App\Keyboards\ru\LanguageKeyboard;
+use App\Keyboards\ru\NameKeyboard;
+use App\Keyboards\ru\CitiesKeyboard;
+use App\Keyboards\ru\JobsKeyboard;
+use App\Checking\ru\Check;
 use App\Cities\RuCities;
+use App\Jobs\Ru\Jobs;
 use App\Backs\BackHandler;
+
 class RuInfoHandler
 {
     /**
@@ -20,7 +23,7 @@ class RuInfoHandler
     public static function handleUserInput($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
         // Проверка существования состояния пользователя
-        if (!RuCheck::checkUserStateExists($chat_id, $user_states)) {
+        if (!Check::checkUserStateExists($chat_id, $user_states)) {
             return false;
         }
         
@@ -32,8 +35,8 @@ class RuInfoHandler
         }
         
         // Валидация текста (длина и пустое значение)
-        $keyboard = self::getKeyboardForStep($user_state['step']);
-        if (!RuCheck::validateAndSendError($telegram, $chat_id, $user_text, $message_id, $keyboard)) {
+        $keyboard = self::getKeyboardForStep($user_state['step'], $user_state);
+        if (!Check::validateAndSendError($telegram, $chat_id, $user_text, $message_id, $keyboard)) {
             return false;
         }
         
@@ -43,10 +46,14 @@ class RuInfoHandler
                 return self::handleName($telegram, $chat_id, $user_text, $message_id, $user_states);
             case 2: // Ожидаем возраст
                 return self::handleAge($telegram, $chat_id, $user_text, $message_id, $user_states);
-            case 3: // Ожидаем выбор региона
+            case 3: // Ожидаем телефонный номер
+                return self::handlePhone($telegram, $chat_id, $user_text, $message_id, $user_states);
+            case 4: // Ожидаем выбор региона
                 return self::handleRegionSelection($telegram, $chat_id, $user_text, $message_id, $user_states);
-            case 4: // Ожидаем выбор города
+            case 5: // Ожидаем выбор города
                 return self::handleCitySelection($telegram, $chat_id, $user_text, $message_id, $user_states);
+            case 6: // Ожидаем выбор вакансии
+                return self::handleJobSelection($telegram, $chat_id, $user_text, $message_id, $user_states);
         }
         
         return false;
@@ -55,7 +62,7 @@ class RuInfoHandler
     /**
      * Получение клавиатуры в зависимости от шага
      */
-    private static function getKeyboardForStep($step)
+    private static function getKeyboardForStep($step, $user_state = [])
     {
         switch ($step) {
             case 1:
@@ -63,7 +70,14 @@ class RuInfoHandler
             case 2:
                 return NameKeyboard::getBackName();
             case 3:
+                return NameKeyboard::getBackName();
+            case 4:
                 return CitiesKeyboard::getRegionsKeyboard();
+            case 5:
+                $region_id = $user_state['region_id'] ?? 1;
+                return CitiesKeyboard::getCitiesKeyboard($region_id);
+            case 6:
+                return JobsKeyboard::getJobsKeyboard();
             default:
                 return NameKeyboard::getBackName();
         }
@@ -74,18 +88,6 @@ class RuInfoHandler
      */
     private static function handleName($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
-        // Проверка имени
-        if (!RuCheck::checkName($user_text)) {
-            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
-            
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => RuCheck::getNameError(),
-                'reply_markup' => LanguageKeyboard::getBackKeyboard()
-            ]);
-            return false;
-        }
-        
         // Удаляем сообщение пользователя с ФИО
         BackHandler::deleteMessage($telegram, $chat_id, $message_id);
         
@@ -96,7 +98,7 @@ class RuInfoHandler
         // Запрашиваем возраст
         $telegram->sendMessage([
             'chat_id' => $chat_id,
-            'text' => RuCheck::getNameAcceptedMessage(),
+            'text' => Check::getNameAcceptedMessage(),
             'reply_markup' => NameKeyboard::getBackName()
         ]);
         
@@ -114,18 +116,18 @@ class RuInfoHandler
             
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
-                'text' => RuCheck::getAgeNumberError(),
+                'text' => Check::getAgeNumberError(),
                 'reply_markup' => NameKeyboard::getBackName()
             ]);
             return false;
         }
         
-        if (!RuCheck::checkAge($user_text)) {
+        if (!Check::checkAge($user_text)) {
             BackHandler::deleteMessage($telegram, $chat_id, $message_id);
             
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
-                'text' => RuCheck::getAgeRangeError(),
+                'text' => Check::getAgeRangeError(),
                 'reply_markup' => NameKeyboard::getBackName()
             ]);
             return false;
@@ -138,10 +140,47 @@ class RuInfoHandler
         $user_states[$chat_id]['age'] = (int)$user_text;
         $user_states[$chat_id]['step'] = 3;
         
+        // Запрашиваем телефонный номер
+        $telegram->sendMessage([
+            'chat_id' => $chat_id,
+            'text' => Check::getAgeAcceptedMessage(),
+            'reply_markup' => NameKeyboard::getBackName()
+        ]);
+        
+        return true;
+    }
+    
+    /**
+     * Обработка телефонного номера
+     */
+    private static function handlePhone($telegram, $chat_id, $user_text, $message_id, &$user_states)
+    {
+        // Проверка формата телефонного номера
+        if (!Check::checkPhoneNumber($user_text)) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => Check::getPhoneError(),
+                'reply_markup' => NameKeyboard::getBackName()
+            ]);
+            return false;
+        }
+
+        // Удаляем сообщение пользователя с телефоном
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+
+        // Очищаем номер телефона от лишних символов для сохранения
+        $cleanPhone = preg_replace('/[\s\(\)\-]/', '', $user_text);
+        
+        // Сохраняем телефонный номер
+        $user_states[$chat_id]['phone'] = $cleanPhone;
+        $user_states[$chat_id]['step'] = 4;
+        
         // Запрашиваем выбор региона
         $telegram->sendMessage([
             'chat_id' => $chat_id,
-            'text' => "✅ Возраст принят!\n\n📍 Выберите ваш регион:",
+            'text' => Check::getPhoneAcceptedMessage() . "\n\n📍 Выберите ваш регион:",
             'reply_markup' => CitiesKeyboard::getRegionsKeyboard()
         ]);
         
@@ -173,7 +212,7 @@ class RuInfoHandler
         
         // Сохраняем выбранный регион
         $user_states[$chat_id]['region_id'] = $region_id;
-        $user_states[$chat_id]['step'] = 4;
+        $user_states[$chat_id]['step'] = 5;
         
         // Показываем города выбранного региона
         $telegram->sendMessage([
@@ -212,25 +251,73 @@ class RuInfoHandler
         
         // Сохраняем выбранный город
         $user_states[$chat_id]['city_id'] = $city_id;
+        $user_states[$chat_id]['step'] = 6;  // Переходим к выбору вакансии
+        
+        // Показываем вакансии
+        $telegram->sendMessage([
+            'chat_id' => $chat_id,
+            'text' => "✅ Город выбран: $user_text\n\n💼 Выберите вакансию, на которую хотите откликнуться:",
+            'reply_markup' => JobsKeyboard::getJobsKeyboard()
+        ]);
+        
+        return true;
+    }
+    
+    /**
+     * Обработка выбора вакансии (текстовое сообщение)
+     */
+    private static function handleJobSelection($telegram, $chat_id, $user_text, $message_id, &$user_states)
+    {
+        // Ищем вакансию по названию
+        $jobs = Jobs::getJobs();
+        $job_id = array_search($user_text, $jobs);
+        
+        if ($job_id === false) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => '❌ Ошибка: вакансия не найдена. Пожалуйста, используйте кнопки.',
+                'reply_markup' => JobsKeyboard::getJobsKeyboard()
+            ]);
+            return false;
+        }
+        
+        // Удаляем сообщение пользователя
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+        
+        // Сохраняем выбранную вакансию
+        $user_states[$chat_id]['job_id'] = $job_id;
         
         // Получаем все данные пользователя
         $name = $user_states[$chat_id]['name'];
         $age = $user_states[$chat_id]['age'];
+        $phone = $user_states[$chat_id]['phone'];
+        $region_id = $user_states[$chat_id]['region_id'];
+        $city_id = $user_states[$chat_id]['city_id'];
+        
         $region_name = RuCities::getRegionName($region_id);
-        $city_name = $user_text;
+        $city_name = RuCities::getCityName($region_id, $city_id);
+        $job_name = $user_text;
         
         // Выводим итоговую информацию
         $response_text = "✅ Спасибо! Ваши данные сохранены:\n\n";
         $response_text .= "👤 ФИО: $name\n";
         $response_text .= "🎂 Возраст: $age лет\n";
+        $response_text .= "📱 Телефон: $phone\n";
         $response_text .= "📍 Регион: $region_name\n";
         $response_text .= "🏙 Город: $city_name\n";
+        $response_text .= "💼 Вакансия: $job_name\n";
+        $response_text .= "\n🎉 Ваш отклик отправлен! Мы свяжемся с вами в ближайшее время.";
         
         $telegram->sendMessage([
             'chat_id' => $chat_id,
             'text' => $response_text,
             'reply_markup' => json_encode(['remove_keyboard' => true])
         ]);
+        
+        // Здесь можно добавить сохранение в базу данных
+        // self::saveToDatabase($user_states[$chat_id]);
         
         // Очищаем состояние пользователя
         unset($user_states[$chat_id]);
