@@ -5,7 +5,7 @@ use Telegram\Bot\Api;
 use App\BotSettings;
 use App\Keyboards\LanguageKeyboard;
 use App\Info\RuInfoHandler;
-use App\Keyboards\NameKeyboard;
+use App\Backs\BackHandler;
 
 $telegram = new Api(BotSettings::TOKEN);
 
@@ -54,7 +54,7 @@ while (true) {
                 echo "✅ Обработан /start от $chat_id\n";
             }
             
-            // Обработка callback кнопок - ВАЖНО: сначала отвечаем на callback
+            // Обработка callback кнопок
             if (isset($update['callback_query'])) {
                 
                 $callback = $update['callback_query'];
@@ -62,15 +62,13 @@ while (true) {
                 $message_id = $callback['message']['message_id'];
                 $data = $callback['data'];
                 
-                
+                // Отвечаем на callback
                 try {
                     $telegram->answerCallbackQuery([
                         'callback_query_id' => $callback['id']
                     ]);
                 } catch (\Exception $e) {
-                    // Игнорируем ошибки ответа на callback, но логируем
                     echo "⚠️ Callback ответ не отправлен: " . $e->getMessage() . "\n";
-                    // Продолжаем выполнение
                 }
                 
                 // Теперь обрабатываем логику
@@ -84,117 +82,120 @@ while (true) {
                                 'language' => 'ru'
                             ];
                         }
+                        
+                        // Удаляем сообщение с выбором языка
+                        try {
+                            $telegram->deleteMessage([
+                                'chat_id' => $chat_id,
+                                'message_id' => $message_id
+                            ]);
+                        } catch (\Exception $e) {
+                            echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
+                        }
+                        
+                        // Отправляем новое сообщение
                         $text = RuInfoHandler::getStartMessage();
                         $keyboard = LanguageKeyboard::getBackKeyboard();
                         
-                        try {
-                            $telegram->editMessageText([
-                                'chat_id' => $chat_id,
-                                'message_id' => $message_id,
-                                'text' => $text,
-                                'reply_markup' => $keyboard 
-                            ]);
-                            echo "✅ Обработан callback $data от $chat_id\n";
-                        } catch (\Exception $e) {
-                            echo "❌ Ошибка редактирования сообщения: " . $e->getMessage() . "\n";
-                            // Если не удалось отредактировать, отправляем новое
-                            $telegram->sendMessage([
-                                'chat_id' => $chat_id,
-                                'text' => $text,
-                                'reply_markup' => $keyboard 
-                            ]);
-                        }
+                        $telegram->sendMessage([
+                            'chat_id' => $chat_id,
+                            'text' => $text,
+                            'reply_markup' => $keyboard 
+                        ]);
+                        echo "✅ Обработан callback $data от $chat_id\n";
                         break;
                         
                     case 'lang_uz':
+                        // Удаляем сообщение с выбором языка
+                        try {
+                            $telegram->deleteMessage([
+                                'chat_id' => $chat_id,
+                                'message_id' => $message_id
+                            ]);
+                        } catch (\Exception $e) {
+                            echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
+                        }
+                        
                         $text = "✅ Til tanlandi: O'zbekcha";
                         $keyboard = LanguageKeyboard::getBackKeyboard();
                         
-                        try {
-                            $telegram->editMessageText([
-                                'chat_id' => $chat_id,
-                                'message_id' => $message_id,
-                                'text' => $text,
-                                'reply_markup' => $keyboard 
-                            ]);
-                            echo "✅ Обработан callback $data от $chat_id\n";
-                        } catch (\Exception $e) {
-                            echo "❌ Ошибка редактирования сообщения: " . $e->getMessage() . "\n";
-                            $telegram->sendMessage([
-                                'chat_id' => $chat_id,
-                                'text' => $text,
-                                'reply_markup' => $keyboard 
-                            ]);
-                        }
+                        $telegram->sendMessage([
+                            'chat_id' => $chat_id,
+                            'text' => $text,
+                            'reply_markup' => $keyboard 
+                        ]);
+                        echo "✅ Обработан callback $data от $chat_id\n";
                         break;
                         
-                    
-                        
-                    case 'back_to_language':
-                        // Сбрасываем состояние пользователя
-                        if (isset($user_states[$chat_id])) {
-                            unset($user_states[$chat_id]);
+                     default:
+                        // Проверяем, является ли callback кнопкой "Назад" или "На главную"
+                        if (strpos($data, 'back_') === 0 || $data === 'main_menu') {
+                            // Удаляем сообщение перед обработкой
+                            try {
+                                $telegram->deleteMessage([
+                                    'chat_id' => $chat_id,
+                                    'message_id' => $message_id
+                                ]);
+                            } catch (\Exception $e) {
+                                echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
+                            }
+                            
+                            $result = BackHandler::handleBackCallback($telegram, $chat_id, $message_id, $data, $user_states);
+                            if ($result) {
+                                echo "✅ Обработан callback $data от $chat_id\n";
+                            } else {
+                                echo "❌ Ошибка обработки $data от $chat_id\n";
+                            }
                         }
                         
-                        $text = 'Выберите язык:';
-                        $keyboard = LanguageKeyboard::getLanguageKeyboard();
+                        // Проверяем, является ли callback выбором региона
+                        elseif (strpos($data, 'region_') === 0) {
+                            // Удаляем сообщение с регионами
+                            try {
+                                $telegram->deleteMessage([
+                                    'chat_id' => $chat_id,
+                                    'message_id' => $message_id
+                                ]);
+                            } catch (\Exception $e) {
+                                echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
+                            }
+                            
+                            $result = RuInfoHandler::handleRegionCallback($telegram, $chat_id, $data, $user_states);
+                            if ($result) {
+                                echo "✅ Обработан callback $data от $chat_id\n";
+                            } else {
+                                echo "❌ Ошибка обработки $data от $chat_id\n";
+                            }
+                        }
                         
-                        try {
-                            $telegram->editMessageText([
-                                'chat_id' => $chat_id,
-                                'message_id' => $message_id,
-                                'text' => $text,
-                                'reply_markup' => $keyboard 
-                            ]);
-                            echo "✅ Обработан callback $data от $chat_id\n";
-                        } catch (\Exception $e) {
-                            echo "❌ Ошибка редактирования сообщения: " . $e->getMessage() . "\n";
-                            $telegram->sendMessage([
-                                'chat_id' => $chat_id,
-                                'text' => $text,
-                                'reply_markup' => $keyboard 
-                            ]);
+                        // Проверяем, является ли callback выбором города
+                        elseif (strpos($data, 'city_') === 0) {
+                            // Удаляем сообщение с городами
+                            try {
+                                $telegram->deleteMessage([
+                                    'chat_id' => $chat_id,
+                                    'message_id' => $message_id
+                                ]);
+                            } catch (\Exception $e) {
+                                echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
+                            }
+                            
+                            $result = RuInfoHandler::handleCityCallback($telegram, $chat_id, $data, $user_states);
+                            if ($result) {
+                                echo "✅ Обработан callback $data от $chat_id\n";
+                            } else {
+                                echo "❌ Ошибка обработки $data от $chat_id\n";
+                            }
+                        }
+                        
+                        // Если callback не распознан
+                        else {
+                            echo "⚠️ Неизвестный callback: $data от $chat_id\n";
                         }
                         break;
-                    case 'back_to_name':
-                        // Возвращаемся к вводу имени
-                        if (isset($user_states[$chat_id])) {
-                            // Сбрасываем шаг к 1 (ввод имени)
-                            $user_states[$chat_id]['step'] = 1;
-                        } else {
-                            // Если состояние потеряно, создаем новое
-                            $user_states[$chat_id] = [
-                                'state' => 'waiting_for_name',
-                                'step' => 1,
-                                'language' => 'ru' // Предполагаем русский язык
-                            ];
-                        }
-                        
-                        $text = "Введите ваше ФИО:";
-                        $keyboard = LanguageKeyboard::getBackKeyboard(); // Используем LanguageKeyboard для шага 1
-                        
-                        try {
-                            $telegram->editMessageText([
-                                'chat_id' => $chat_id,
-                                'message_id' => $message_id,
-                                'text' => $text,
-                                'reply_markup' => $keyboard 
-                            ]);
-                            echo "✅ Обработан callback $data от $chat_id\n";
-                        } catch (\Exception $e) {
-                            echo "❌ Ошибка редактирования сообщения: " . $e->getMessage() . "\n";
-                            $telegram->sendMessage([
-                                'chat_id' => $chat_id,
-                                'text' => $text,
-                                'reply_markup' => $keyboard 
-                            ]);
-                        }
-                        break;
-                    }
+                }
             }
             
-
-
             // Обработка ввода данных пользователем
             if (isset($update['message']) && 
                 isset($update['message']['text']) && 
@@ -205,26 +206,21 @@ while (true) {
                 
                 // Проверяем, что это не команда /start
                 if (strtolower($user_text) === '/start') {
-                    continue; // Пропускаем обработку, т.к. /start уже обработан выше
+                    continue;
                 }
                 
                 // Обработка в зависимости от выбранного языка
                 switch ($user_state['language']) {
                     case 'ru':
                         RuInfoHandler::handleUserInput($telegram, $chat_id, $user_text, $user_states);
-                        
                         break;
                         
                     // Добавьте обработку других языков здесь
                 }
             }
         }
-
     } catch (\Exception $e) {
         echo "❌ Ошибка: " . $e->getMessage() . "\n";
-        // Добавляем небольшую паузу при ошибках
         sleep(2);
     }
-
-    
 }

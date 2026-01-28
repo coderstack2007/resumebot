@@ -18,7 +18,8 @@ class LanguageKeyboard
     {
         $keyboard = [
             'inline_keyboard' => [
-                [['text' => '⬅️ Назад', 'callback_data' => 'back_to_language']]
+                [['text' => '⬅️ Назад', 'callback_data' => 'back_to_language']],
+                [['text' => '🏠 На главную', 'callback_data' => 'main_menu']],
             ]
         ];
         return json_encode($keyboard);
