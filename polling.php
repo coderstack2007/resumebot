@@ -27,6 +27,33 @@ while (true) {
         foreach ($updates as $update) {
             $last_update_id = $update['update_id'];
             
+            // Обработка фото
+            if (isset($update['message']) && isset($update['message']['photo'])) {
+                $chat_id = $update['message']['chat']['id'];
+                $photo_array = $update['message']['photo'];
+                $message_id = $update['message']['message_id'];
+                
+                // Проверяем, находится ли пользователь в процессе заполнения
+                if (isset($user_states[$chat_id]) && isset($user_states[$chat_id]['step'])) {
+                    $user_state = $user_states[$chat_id];
+                    
+                    // Обработка в зависимости от выбранного языка
+                    switch ($user_state['language']) {
+                        case 'ru':
+                            RuInfoHandler::handlePhoto($telegram, $chat_id, $photo_array, $message_id, $user_states);
+                            break;
+                            
+                        case 'uz':
+                            // Добавьте обработчик для узбекского языка
+                            // UzInfoHandler::handlePhoto($telegram, $chat_id, $photo_array, $message_id, $user_states);
+                            break;
+                    }
+                }
+                
+                echo "✅ Обработано фото от $chat_id\n";
+                continue;
+            }
+            
             // Обработка только текстовых сообщений
             if (isset($update['message']) && isset($update['message']['text'])) {
                 $chat_id = $update['message']['chat']['id'];

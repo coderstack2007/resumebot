@@ -102,12 +102,22 @@ class BackHandler
         } elseif ($step == 4) {
             // Возврат к вводу телефона
             $user_states[$chat_id]['step'] = 3;
+            unset($user_states[$chat_id]['photo_filename']);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => Check::getAgeAcceptedMessage(),
+                'reply_markup' => NameKeyboard::getBackName()
+            ]);
+        } elseif ($step == 5) {
+            // Возврат к загрузке фото
+            $user_states[$chat_id]['step'] = 4;
             unset($user_states[$chat_id]['region_id']);
             unset($user_states[$chat_id]['city_id']);
             
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
-                'text' => Check::getAgeAcceptedMessage(),
+                'text' => Check::getPhotoRequestMessage(),
                 'reply_markup' => NameKeyboard::getBackName()
             ]);
         }
@@ -124,7 +134,7 @@ class BackHandler
             return false;
         }
         
-        $user_states[$chat_id]['step'] = 4;
+        $user_states[$chat_id]['step'] = 5;
         unset($user_states[$chat_id]['region_id']);
         unset($user_states[$chat_id]['city_id']);
         unset($user_states[$chat_id]['job_id']);
@@ -153,7 +163,7 @@ class BackHandler
             return false;
         }
         
-        $user_states[$chat_id]['step'] = 5;
+        $user_states[$chat_id]['step'] = 6;
         unset($user_states[$chat_id]['city_id']);
         unset($user_states[$chat_id]['job_id']);
         

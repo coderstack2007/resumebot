@@ -48,15 +48,130 @@ class RuInfoHandler
                 return self::handleAge($telegram, $chat_id, $user_text, $message_id, $user_states);
             case 3: // Ожидаем телефонный номер
                 return self::handlePhone($telegram, $chat_id, $user_text, $message_id, $user_states);
-            case 4: // Ожидаем выбор региона
+            case 4: // Ожидаем фото - если пришел текст, выводим ошибку
+                BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+                $telegram->sendMessage([
+                    'chat_id' => $chat_id,
+                    'text' => Check::getImageRequiredError(),
+                    'reply_markup' => NameKeyboard::getBackName()
+                ]);
+                return false;
+            case 5: // Ожидаем выбор региона
                 return self::handleRegionSelection($telegram, $chat_id, $user_text, $message_id, $user_states);
-            case 5: // Ожидаем выбор города
+            case 6: // Ожидаем выбор города
                 return self::handleCitySelection($telegram, $chat_id, $user_text, $message_id, $user_states);
-            case 6: // Ожидаем выбор вакансии
+            case 7: // Ожидаем выбор вакансии
                 return self::handleJobSelection($telegram, $chat_id, $user_text, $message_id, $user_states);
         }
         
         return false;
+    }
+    
+    /**
+     * Обработка фото от пользователя
+     */
+    public static function handlePhoto($telegram, $chat_id, $photo_array, $message_id, &$user_states)
+    {
+        // Проверка существования состояния пользователя
+        if (!Check::checkUserStateExists($chat_id, $user_states)) {
+            return false;
+        }
+        
+        $user_state = $user_states[$chat_id];
+        
+        // Проверяем, что мы ожидаем фото (шаг 4)
+        if ($user_state['step'] != 4) {
+            return false;
+        }
+        
+        // Получаем самое большое фото (лучшее качество)
+        $photo = end($photo_array);
+        $file_id = $photo['file_id'];
+        $file_size = $photo['file_size'] ?? 0;
+        
+        // Проверка размера файла
+        if (!Check::checkImageSize($file_size)) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => Check::getImageSizeError(),
+                'reply_markup' => NameKeyboard::getBackName()
+            ]);
+            return false;
+        }
+        
+        // Получаем информацию о файле
+        try {
+            $file_info = $telegram->getFile(['file_id' => $file_id]);
+            $file_path = $file_info['file_path'];
+            
+            // Получаем расширение файла
+            $extension = pathinfo($file_path, PATHINFO_EXTENSION);
+            
+            // Проверка формата (дополнительная проверка по расширению)
+            if (!in_array(strtolower($extension), ['jpg', 'jpeg', 'png'])) {
+                BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+                
+                $telegram->sendMessage([
+                    'chat_id' => $chat_id,
+                    'text' => Check::getImageFormatError(),
+                    'reply_markup' => NameKeyboard::getBackName()
+                ]);
+                return false;
+            }
+            
+            // Скачиваем файл
+            $file_url = "https://api.telegram.org/file/bot" . \App\BotSettings::TOKEN . "/$file_path";
+            $file_content = file_get_contents($file_url);
+            
+            if ($file_content === false) {
+                throw new \Exception("Не удалось скачать файл");
+            }
+            
+            // Создаем директорию, если её нет
+            $images_dir = dirname(__DIR__, 2) . '/src/images';
+            if (!file_exists($images_dir)) {
+                mkdir($images_dir, 0777, true);
+            }
+            
+            // Генерируем уникальное имя файла: chat_id_timestamp.extension
+            $filename = $chat_id . '_' . time() . '.' . $extension;
+            $save_path = $images_dir . '/' . $filename;
+            
+            // Сохраняем файл
+            if (file_put_contents($save_path, $file_content) === false) {
+                throw new \Exception("Не удалось сохранить файл");
+            }
+            
+            // Удаляем сообщение пользователя с фото
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
+            // Сохраняем имя файла в состоянии
+            $user_states[$chat_id]['photo_filename'] = $filename;
+            $user_states[$chat_id]['step'] = 5;
+            
+            // Запрашиваем выбор региона
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => Check::getPhotoAcceptedMessage() . "\n\n📍 Выберите ваш регион:",
+                'reply_markup' => CitiesKeyboard::getRegionsKeyboard()
+            ]);
+            
+            return true;
+            
+        } catch (\Exception $e) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => "❌ Произошла ошибка при сохранении фото: " . $e->getMessage() . "\n\nПопробуйте еще раз:",
+                'reply_markup' => NameKeyboard::getBackName()
+            ]);
+            
+            echo "❌ Ошибка при сохранении фото: " . $e->getMessage() . "\n";
+            return false;
+        }
     }
     
     /**
@@ -72,11 +187,13 @@ class RuInfoHandler
             case 3:
                 return NameKeyboard::getBackName();
             case 4:
-                return CitiesKeyboard::getRegionsKeyboard();
+                return NameKeyboard::getBackName();
             case 5:
+                return CitiesKeyboard::getRegionsKeyboard();
+            case 6:
                 $region_id = $user_state['region_id'] ?? 1;
                 return CitiesKeyboard::getCitiesKeyboard($region_id);
-            case 6:
+            case 7:
                 return JobsKeyboard::getJobsKeyboard();
             default:
                 return NameKeyboard::getBackName();
@@ -177,11 +294,11 @@ class RuInfoHandler
         $user_states[$chat_id]['phone'] = $cleanPhone;
         $user_states[$chat_id]['step'] = 4;
         
-        // Запрашиваем выбор региона
+        // Запрашиваем фото
         $telegram->sendMessage([
             'chat_id' => $chat_id,
-            'text' => Check::getPhoneAcceptedMessage() . "\n\n📍 Выберите ваш регион:",
-            'reply_markup' => CitiesKeyboard::getRegionsKeyboard()
+            'text' => Check::getPhoneAcceptedMessage() . "\n\n" . Check::getPhotoRequestMessage(),
+            'reply_markup' => NameKeyboard::getBackName()
         ]);
         
         return true;
@@ -212,7 +329,7 @@ class RuInfoHandler
         
         // Сохраняем выбранный регион
         $user_states[$chat_id]['region_id'] = $region_id;
-        $user_states[$chat_id]['step'] = 5;
+        $user_states[$chat_id]['step'] = 6;
         
         // Показываем города выбранного региона
         $telegram->sendMessage([
@@ -251,7 +368,7 @@ class RuInfoHandler
         
         // Сохраняем выбранный город
         $user_states[$chat_id]['city_id'] = $city_id;
-        $user_states[$chat_id]['step'] = 6;  // Переходим к выбору вакансии
+        $user_states[$chat_id]['step'] = 7;  // Переходим к выбору вакансии
         
         // Показываем вакансии
         $telegram->sendMessage([
@@ -293,6 +410,7 @@ class RuInfoHandler
         $name = $user_states[$chat_id]['name'];
         $age = $user_states[$chat_id]['age'];
         $phone = $user_states[$chat_id]['phone'];
+        $photo_filename = $user_states[$chat_id]['photo_filename'] ?? 'не указано';
         $region_id = $user_states[$chat_id]['region_id'];
         $city_id = $user_states[$chat_id]['city_id'];
         
@@ -305,6 +423,7 @@ class RuInfoHandler
         $response_text .= "👤 ФИО: $name\n";
         $response_text .= "🎂 Возраст: $age лет\n";
         $response_text .= "📱 Телефон: $phone\n";
+        $response_text .= "📸 Фото: $photo_filename\n";
         $response_text .= "📍 Регион: $region_name\n";
         $response_text .= "🏙 Город: $city_name\n";
         $response_text .= "💼 Вакансия: $job_name\n";
