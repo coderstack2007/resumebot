@@ -6,62 +6,84 @@ use App\Cities\RuCities;
 class CitiesKeyboard
 {
     /**
-     * Клавиатура для выбора региона
+     * Клавиатура для выбора региона (Reply Keyboard)
      */
     public static function getRegionsKeyboard()
     {
         $regions = RuCities::getRegions();
         $buttons = [];
         
+        // Создаем кнопки по 2 в ряд
+        $row = [];
+        $count = 0;
+        
         foreach ($regions as $id => $name) {
-            $buttons[] = [
-                [
-                    'text' => $name,
-                    'callback_data' => 'region_' . $id
-                ]
-            ];
+            $row[] = ['text' => $name];
+            $count++;
+            
+            // Когда накопилось 2 кнопки, добавляем ряд
+            if ($count == 2) {
+                $buttons[] = $row;
+                $row = [];
+                $count = 0;
+            }
         }
         
-        // Добавляем кнопку "Назад к возрасту"
+        // Добавляем оставшиеся кнопки
+        if (!empty($row)) {
+            $buttons[] = $row;
+        }
+        
+        // Добавляем кнопку "Назад"
         $buttons[] = [
-            [
-                'text' => '⬅️ Назад',
-                'callback_data' => 'back_to_age'
-            ]
+            ['text' => '⬅️ Назад']
         ];
         
         return json_encode([
-            'inline_keyboard' => $buttons
+            'keyboard' => $buttons,
+            'resize_keyboard' => true,
+            'one_time_keyboard' => false
         ]);
     }
     
     /**
-     * Клавиатура для выбора города
+     * Клавиатура для выбора города (Reply Keyboard)
      */
     public static function getCitiesKeyboard(int $region_id)
     {
         $cities = RuCities::getCitiesByRegion($region_id);
         $buttons = [];
         
+        // Создаем кнопки по 2 в ряд
+        $row = [];
+        $count = 0;
+        
         foreach ($cities as $city_id => $city_name) {
-            $buttons[] = [
-                [
-                    'text' => $city_name,
-                    'callback_data' => 'city_' . $region_id . '_' . $city_id
-                ]
-            ];
+            $row[] = ['text' => $city_name];
+            $count++;
+            
+            // Когда накопилось 2 кнопки, добавляем ряд
+            if ($count == 2) {
+                $buttons[] = $row;
+                $row = [];
+                $count = 0;
+            }
         }
         
-        // Добавляем кнопку "Назад к регионам" вместо "back_to_age"
+        // Добавляем оставшиеся кнопки
+        if (!empty($row)) {
+            $buttons[] = $row;
+        }
+        
+        // Добавляем кнопку "Назад к регионам"
         $buttons[] = [
-            [
-                'text' => '⬅️ Назад',
-                'callback_data' => 'back_to_regions'
-            ]
+            ['text' => '⬅️ Назад к регионам']
         ];
         
         return json_encode([
-            'inline_keyboard' => $buttons
+            'keyboard' => $buttons,
+            'resize_keyboard' => true,
+            'one_time_keyboard' => false
         ]);
     }
 }

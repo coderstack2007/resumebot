@@ -1,33 +1,40 @@
 <?php
 namespace App\Backs;
 
-use App\Info\RuInfoHandler;
 use App\Keyboards\LanguageKeyboard;
 use App\Keyboards\NameKeyboard;
 use App\Keyboards\CitiesKeyboard;
-use App\Cities\RuCities;
 
 class BackHandler
 {
     /**
-     * Обработка всех callback-действий с кнопками "Назад" и "На главную"
+     * Проверка, является ли текст кнопкой "Назад"
      */
-    public static function handleBackCallback($telegram, $chat_id, $message_id, $data, &$user_states)
+    public static function isBackButton($user_text): bool
     {
-        switch ($data) {
-            case 'main_menu':
-                return self::handleMainMenu($telegram, $chat_id, $user_states);
-                
-            case 'back_to_language':
+        return in_array($user_text, [
+            '⬅️ Назад к выбору языка',
+            '⬅️ Назад',
+            '⬅️ Назад к регионам'
+        ]);
+    }
+    
+    /**
+     * Обработка всех кнопок "Назад"
+     */
+    public static function handleBackButton($telegram, $chat_id, $user_text, $message_id, &$user_states)
+    {
+        // Удаляем сообщение пользователя
+        self::deleteMessage($telegram, $chat_id, $message_id);
+        
+        switch ($user_text) {
+            case '⬅️ Назад к выбору языка':
                 return self::handleBackToLanguage($telegram, $chat_id, $user_states);
                 
-            case 'back_to_name':
-                return self::handleBackToName($telegram, $chat_id, $user_states);
+            case '⬅️ Назад':
+                return self::handleBack($telegram, $chat_id, $user_states);
                 
-            case 'back_to_age':
-                return self::handleBackToAge($telegram, $chat_id, $user_states);
-                
-            case 'back_to_regions':
+            case '⬅️ Назад к регионам':
                 return self::handleBackToRegions($telegram, $chat_id, $user_states);
                 
             default:
@@ -36,70 +43,56 @@ class BackHandler
     }
     
     /**
-     * Обработка кнопки "На главную"
-     */
-    private static function handleMainMenu($telegram, $chat_id, &$user_states)
-    {
-        // Сбрасываем состояние пользователя
-        if (isset($user_states[$chat_id])) {
-            unset($user_states[$chat_id]);
-        }
-        
-        $text = 'Выберите язык:';
-        $keyboard = LanguageKeyboard::getLanguageKeyboard();
-        
-        $telegram->sendMessage([
-            'chat_id' => $chat_id,
-            'text' => $text,
-            'reply_markup' => $keyboard 
-        ]);
-        
-        return true;
-    }
-    
-    /**
-     * Возврат к выбору языка
+     * Обработка кнопки "Назад к выбору языка"
      */
     private static function handleBackToLanguage($telegram, $chat_id, &$user_states)
     {
-        // Сбрасываем состояние пользователя
-        if (isset($user_states[$chat_id])) {
-            unset($user_states[$chat_id]);
-        }
-        
-        $text = 'Выберите язык:';
-        $keyboard = LanguageKeyboard::getLanguageKeyboard();
+        // Сбрасываем состояние
+        unset($user_states[$chat_id]);
         
         $telegram->sendMessage([
             'chat_id' => $chat_id,
-            'text' => $text,
-            'reply_markup' => $keyboard 
+            'text' => 'Выберите язык:',
+            'reply_markup' => LanguageKeyboard::getLanguageKeyboard()
         ]);
         
         return true;
     }
     
     /**
-     * Обработка кнопки "Назад" на шаге возраста (возврат к вводу имени)
+     * Обработка кнопки "Назад" (универсальная)
      */
-    public static function handleBackToName($telegram, $chat_id, &$user_states)
+    private static function handleBack($telegram, $chat_id, &$user_states)
     {
         if (!isset($user_states[$chat_id])) {
             return false;
         }
         
-        // Возвращаемся к шагу ввода имени
-        $user_states[$chat_id]['step'] = 1;
-        unset($user_states[$chat_id]['name']);
-        unset($user_states[$chat_id]['age']);
-        unset($user_states[$chat_id]['region_id']);
-        unset($user_states[$chat_id]['city_id']);
+        $step = $user_states[$chat_id]['step'];
         
-        $telegram->sendMessage([
-            'chat_id' => $chat_id,
-            'text' => "Пожалуйста, введите ваше ФИО:",
-            'reply_markup' => LanguageKeyboard::getBackKeyboard()
-        ]);
+        if ($step == 2) {
+            // Возврат к вводу имени
+            $user_states[$chat_id]['step'] = 1;
+            unset($user_states[$chat_id]['name']);
+            unset($user_states[$chat_id]['age']);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => "Пожалуйста, введите ваше ФИО:",
+                'reply_markup' => LanguageKeyboard::getBackKeyboard()
+            ]);
+        } elseif ($step == 3) {
+            // Возврат к вводу возраста
+            $user_states[$chat_id]['step'] = 2;
+            unset($user_states[$chat_id]['region_id']);
+            unset($user_states[$chat_id]['city_id']);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => "🎂 Теперь введите ваш возраст (15-60 лет):",
+                'reply_markup' => NameKeyboard::getBackName()
+            ]);
+        }
         
         return true;
     }
@@ -107,7 +100,7 @@ class BackHandler
     /**
      * Обработка кнопки "Назад к регионам"
      */
-    public static function handleBackToRegions($telegram, $chat_id, &$user_states)
+    private static function handleBackToRegions($telegram, $chat_id, &$user_states)
     {
         if (!isset($user_states[$chat_id])) {
             return false;
@@ -127,25 +120,17 @@ class BackHandler
     }
     
     /**
-     * Обработка кнопки "Назад к возрасту"
+     * Удаление сообщения с обработкой ошибок
      */
-    public static function handleBackToAge($telegram, $chat_id, &$user_states)
+    public static function deleteMessage($telegram, $chat_id, $message_id)
     {
-        if (!isset($user_states[$chat_id])) {
-            return false;
+        try {
+            $telegram->deleteMessage([
+                'chat_id' => $chat_id,
+                'message_id' => $message_id
+            ]);
+        } catch (\Exception $e) {
+            echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
         }
-        
-        $user_states[$chat_id]['step'] = 2;
-        unset($user_states[$chat_id]['age']);
-        unset($user_states[$chat_id]['region_id']);
-        unset($user_states[$chat_id]['city_id']);
-        
-        $telegram->sendMessage([
-            'chat_id' => $chat_id,
-            'text' => "🎂 Теперь введите ваш возраст (15-60 лет):",
-            'reply_markup' => NameKeyboard::getBackName()
-        ]);
-        
-        return true;
     }
 }

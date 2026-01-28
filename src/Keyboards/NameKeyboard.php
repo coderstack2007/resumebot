@@ -4,15 +4,16 @@ namespace App\Keyboards;
 class NameKeyboard
 {
     /**
-     * Клавиатура "Назад" для шага ввода имени
+     * Клавиатура "Назад" для шага ввода возраста
      */
     public static function getBackName(): string
     {
         $keyboard = [
-            'inline_keyboard' => [
-                [['text' => '⬅️ Назад', 'callback_data' => 'back_to_name']],
-                [['text' => '🏠 На главную', 'callback_data' => 'main_menu']]
-            ]
+            'keyboard' => [
+                [['text' => '⬅️ Назад']]
+            ],
+            'resize_keyboard' => true,
+            'one_time_keyboard' => false
         ];
         
         return json_encode($keyboard);

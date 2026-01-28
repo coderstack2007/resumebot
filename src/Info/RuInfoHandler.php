@@ -4,9 +4,9 @@ namespace App\Info;
 use App\Keyboards\LanguageKeyboard;
 use App\Keyboards\NameKeyboard;
 use App\Keyboards\CitiesKeyboard;
-use App\Checking\ruCheck;
+use App\Checking\RuCheck;
 use App\Cities\RuCities;
-
+use App\Backs\BackHandler;
 class RuInfoHandler
 {
     /**
@@ -17,44 +17,36 @@ class RuInfoHandler
         return "✅ Язык выбран: Русский\n\nПожалуйста, введите ваше ФИО:";
     }
     
-    public static function handleUserInput($telegram, $chat_id, $user_text, &$user_states)
+    public static function handleUserInput($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
-        // Проверка, существует ли состояние пользователя
-        if (!isset($user_states[$chat_id])) {
+        // Проверка существования состояния пользователя
+        if (!RuCheck::checkUserStateExists($chat_id, $user_states)) {
             return false;
         }
         
         $user_state = $user_states[$chat_id];
         
-        // Проверка на максимальную длину (50 символов)
-        if (!ruCheck::checkMaxLength($user_text)) {
-            $keyboard = self::getKeyboardForStep($user_state['step']);
-            
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => ruCheck::getMaxLengthError(),
-                'reply_markup' => $keyboard
-            ]);
+        // Обработка кнопок "Назад"
+        if (BackHandler::isBackButton($user_text)) {
+            return BackHandler::handleBackButton($telegram, $chat_id, $user_text, $message_id, $user_states);
+        }
+        
+        // Валидация текста (длина и пустое значение)
+        $keyboard = self::getKeyboardForStep($user_state['step']);
+        if (!RuCheck::validateAndSendError($telegram, $chat_id, $user_text, $message_id, $keyboard)) {
             return false;
         }
         
-        // Проверка на пустое значение
-        if (!ruCheck::checkNotEmpty($user_text)) {
-            $keyboard = self::getKeyboardForStep($user_state['step']);
-            
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => ruCheck::getNotEmptyError(),
-                'reply_markup' => $keyboard
-            ]);
-            return false;
-        }
-        
+        // Обработка в зависимости от шага
         switch ($user_state['step']) {
             case 1: // Ожидаем имя
-                return self::handleName($telegram, $chat_id, $user_text, $user_states);
+                return self::handleName($telegram, $chat_id, $user_text, $message_id, $user_states);
             case 2: // Ожидаем возраст
-                return self::handleAge($telegram, $chat_id, $user_text, $user_states);
+                return self::handleAge($telegram, $chat_id, $user_text, $message_id, $user_states);
+            case 3: // Ожидаем выбор региона
+                return self::handleRegionSelection($telegram, $chat_id, $user_text, $message_id, $user_states);
+            case 4: // Ожидаем выбор города
+                return self::handleCitySelection($telegram, $chat_id, $user_text, $message_id, $user_states);
         }
         
         return false;
@@ -80,26 +72,31 @@ class RuInfoHandler
     /**
      * Обработка имени
      */
-    private static function handleName($telegram, $chat_id, $user_text, &$user_states)
+    private static function handleName($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
         // Проверка имени
-        if (!ruCheck::checkName($user_text)) {
+        if (!RuCheck::checkName($user_text)) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
-                'text' => ruCheck::getNameError(),
+                'text' => RuCheck::getNameError(),
                 'reply_markup' => LanguageKeyboard::getBackKeyboard()
             ]);
             return false;
         }
         
+        // Удаляем сообщение пользователя с ФИО
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+        
         // Сохраняем имя и переходим к следующему шагу
         $user_states[$chat_id]['name'] = $user_text;
         $user_states[$chat_id]['step'] = 2; 
         
-        // Запрашиваем возраст с NameKeyboard
+        // Запрашиваем возраст
         $telegram->sendMessage([
             'chat_id' => $chat_id,
-            'text' => ruCheck::getNameAcceptedMessage(),
+            'text' => RuCheck::getNameAcceptedMessage(),
             'reply_markup' => NameKeyboard::getBackName()
         ]);
         
@@ -109,26 +106,33 @@ class RuInfoHandler
     /**
      * Обработка возраста
      */
-    private static function handleAge($telegram, $chat_id, $user_text, &$user_states)
+    private static function handleAge($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
         // Проверка возраста
         if (!is_numeric($user_text)) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
-                'text' => ruCheck::getAgeNumberError(),
+                'text' => RuCheck::getAgeNumberError(),
                 'reply_markup' => NameKeyboard::getBackName()
             ]);
             return false;
         }
         
-        if (!ruCheck::checkAge($user_text)) {
+        if (!RuCheck::checkAge($user_text)) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
-                'text' => ruCheck::getAgeRangeError(),
+                'text' => RuCheck::getAgeRangeError(),
                 'reply_markup' => NameKeyboard::getBackName()
             ]);
             return false;
         }
+
+        // Удаляем сообщение пользователя с возрастом
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
 
         // Сохраняем возраст
         $user_states[$chat_id]['age'] = (int)$user_text;
@@ -145,33 +149,36 @@ class RuInfoHandler
     }
     
     /**
-     * Обработка выбора региона (callback)
+     * Обработка выбора региона (текстовое сообщение)
      */
-    public static function handleRegionCallback($telegram, $chat_id, $callback_data, &$user_states)
+    private static function handleRegionSelection($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
-        // Извлекаем ID региона из callback_data (формат: region_1)
-        $region_id = (int)str_replace('region_', '', $callback_data);
+        // Ищем регион по названию
+        $regions = RuCities::getRegions();
+        $region_id = array_search($user_text, $regions);
         
-        // Проверяем существует ли регион
-        if (!RuCities::regionExists($region_id)) {
+        if ($region_id === false) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
-                'text' => '❌ Ошибка: регион не найден',
+                'text' => '❌ Ошибка: регион не найден. Пожалуйста, используйте кнопки.',
                 'reply_markup' => CitiesKeyboard::getRegionsKeyboard()
             ]);
             return false;
         }
         
+        // Удаляем сообщение пользователя
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+        
         // Сохраняем выбранный регион
         $user_states[$chat_id]['region_id'] = $region_id;
         $user_states[$chat_id]['step'] = 4;
         
-        $region_name = RuCities::getRegionName($region_id);
-        
         // Показываем города выбранного региона
         $telegram->sendMessage([
             'chat_id' => $chat_id,
-            'text' => "✅ Регион выбран: $region_name\n\n🏙 Выберите ваш город:",
+            'text' => "✅ Регион выбран: $user_text\n\n🏙 Выберите ваш город:",
             'reply_markup' => CitiesKeyboard::getCitiesKeyboard($region_id)
         ]);
         
@@ -179,24 +186,29 @@ class RuInfoHandler
     }
     
     /**
-     * Обработка выбора города (callback)
+     * Обработка выбора города (текстовое сообщение)
      */
-    public static function handleCityCallback($telegram, $chat_id, $callback_data, &$user_states)
+    private static function handleCitySelection($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
-        // Извлекаем ID региона и города из callback_data (формат: city_1_101)
-        $parts = explode('_', $callback_data);
-        $region_id = (int)$parts[1];
-        $city_id = (int)$parts[2];
+        $region_id = $user_states[$chat_id]['region_id'];
         
-        // Проверяем существует ли город
-        if (!RuCities::cityExists($region_id, $city_id)) {
+        // Ищем город по названию
+        $cities = RuCities::getCitiesByRegion($region_id);
+        $city_id = array_search($user_text, $cities);
+        
+        if ($city_id === false) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
-                'text' => '❌ Ошибка: город не найден',
+                'text' => '❌ Ошибка: город не найден. Пожалуйста, используйте кнопки.',
                 'reply_markup' => CitiesKeyboard::getCitiesKeyboard($region_id)
             ]);
             return false;
         }
+        
+        // Удаляем сообщение пользователя
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
         
         // Сохраняем выбранный город
         $user_states[$chat_id]['city_id'] = $city_id;
@@ -205,7 +217,7 @@ class RuInfoHandler
         $name = $user_states[$chat_id]['name'];
         $age = $user_states[$chat_id]['age'];
         $region_name = RuCities::getRegionName($region_id);
-        $city_name = RuCities::getCityName($region_id, $city_id);
+        $city_name = $user_text;
         
         // Выводим итоговую информацию
         $response_text = "✅ Спасибо! Ваши данные сохранены:\n\n";
