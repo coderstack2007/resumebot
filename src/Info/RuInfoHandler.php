@@ -9,6 +9,7 @@ use App\Checking\ru\Check;
 use App\Cities\ru\Cities;
 use App\Jobs\Ru\Jobs;
 use App\Backs\ru\BackHandler;
+use App\Database;
 
 class RuInfoHandler
 {
@@ -62,6 +63,8 @@ class RuInfoHandler
                 return self::handleCitySelection($telegram, $chat_id, $user_text, $message_id, $user_states);
             case 7: // Ожидаем выбор вакансии
                 return self::handleJobSelection($telegram, $chat_id, $user_text, $message_id, $user_states);
+            case 8: // Ожидаем подтверждение данных
+                return self::handleConfirmation($telegram, $chat_id, $user_text, $message_id, $user_states);
         }
         
         return false;
@@ -195,6 +198,8 @@ class RuInfoHandler
                 return CitiesKeyboard::getCitiesKeyboard($region_id);
             case 7:
                 return JobsKeyboard::getJobsKeyboard();
+            case 8:
+                return JobsKeyboard::getConfirmationKeyboard();
             default:
                 return NameKeyboard::getBackName();
         }
@@ -405,8 +410,9 @@ class RuInfoHandler
         
         // Сохраняем выбранную вакансию
         $user_states[$chat_id]['job_id'] = $job_id;
+        $user_states[$chat_id]['step'] = 8; // Переходим к подтверждению
         
-        // Получаем все данные пользователя
+        // Получаем все данные пользователя для показа
         $name = $user_states[$chat_id]['name'];
         $age = $user_states[$chat_id]['age'];
         $phone = $user_states[$chat_id]['phone'];
@@ -418,8 +424,8 @@ class RuInfoHandler
         $city_name = Cities::getCityName($region_id, $city_id);
         $job_name = $user_text;
         
-        // Выводим итоговую информацию
-        $response_text = "✅ Спасибо! Ваши данные сохранены:\n\n";
+        // Показываем данные для подтверждения
+        $response_text = "📋 Проверьте правильность введенных данных:\n\n";
         $response_text .= "👤 ФИО: $name\n";
         $response_text .= "🎂 Возраст: $age лет\n";
         $response_text .= "📱 Телефон: $phone\n";
@@ -427,20 +433,125 @@ class RuInfoHandler
         $response_text .= "📍 Регион: $region_name\n";
         $response_text .= "🏙 Город: $city_name\n";
         $response_text .= "💼 Вакансия: $job_name\n";
-        $response_text .= "\n🎉 Ваш отклик отправлен! Мы свяжемся с вами в ближайшее время.";
+        $response_text .= "\n❓ Все данные указаны верно?";
         
         $telegram->sendMessage([
             'chat_id' => $chat_id,
             'text' => $response_text,
-            'reply_markup' => json_encode(['remove_keyboard' => true])
+            'reply_markup' => JobsKeyboard::getConfirmationKeyboard()
         ]);
         
-        // Здесь можно добавить сохранение в базу данных
-        // self::saveToDatabase($user_states[$chat_id]);
-        
-        // Очищаем состояние пользователя
-        unset($user_states[$chat_id]);
-        
         return true;
+    }
+    
+    /**
+     * Обработка подтверждения данных
+     */
+    private static function handleConfirmation($telegram, $chat_id, $user_text, $message_id, &$user_states)
+    {
+        // Проверяем, нажал ли пользователь "Да, отправить"
+        if (JobsKeyboard::isConfirmButton($user_text)) {
+            // Удаляем сообщение пользователя
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
+            // Получаем все данные пользователя
+            $name = $user_states[$chat_id]['name'];
+            $age = $user_states[$chat_id]['age'];
+            $phone = $user_states[$chat_id]['phone'];
+            $photo_filename = $user_states[$chat_id]['photo_filename'] ?? 'не указано';
+            $region_id = $user_states[$chat_id]['region_id'];
+            $city_id = $user_states[$chat_id]['city_id'];
+            $job_id = $user_states[$chat_id]['job_id'];
+            
+            $region_name = Cities::getRegionName($region_id);
+            $city_name = Cities::getCityName($region_id, $city_id);
+            $job_name = Jobs::getJobName($job_id);
+            
+            // Выводим итоговую информацию
+            $response_text = "✅ Спасибо! Ваши данные сохранены:\n\n";
+            $response_text .= "👤 ФИО: $name\n";
+            $response_text .= "🎂 Возраст: $age лет\n";
+            $response_text .= "📱 Телефон: $phone\n";
+            $response_text .= "📸 Фото: $photo_filename\n";
+            $response_text .= "📍 Регион: $region_name\n";
+            $response_text .= "🏙 Город: $city_name\n";
+            $response_text .= "💼 Вакансия: $job_name\n";
+            $response_text .= "\n🎉 Ваш отклик отправлен! Мы свяжемся с вами в ближайшее время.";
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => $response_text,
+                'reply_markup' => json_encode(['remove_keyboard' => true])
+            ]);
+            
+            // Сохраняем в базу данных
+            self::saveToDatabase($chat_id, $user_states[$chat_id]);
+            
+            // Очищаем состояние пользователя
+            unset($user_states[$chat_id]);
+            
+            return true;
+        } 
+        // Проверяем, нажал ли пользователь "Назад"
+        elseif ($user_text === '⬅️ Назад') {
+            // Удаляем сообщение пользователя
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
+            // Возвращаемся к выбору вакансии
+            $user_states[$chat_id]['step'] = 7;
+            unset($user_states[$chat_id]['job_id']);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => "💼 Выберите вакансию, на которую хотите откликнуться:",
+                'reply_markup' => JobsKeyboard::getJobsKeyboard()
+            ]);
+            
+            return true;
+        }
+        
+        // Если получили неизвестный ответ
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+        
+        $telegram->sendMessage([
+            'chat_id' => $chat_id,
+            'text' => '❌ Пожалуйста, используйте кнопки для ответа.',
+            'reply_markup' => JobsKeyboard::getConfirmationKeyboard()
+        ]);
+        
+        return false;
+    }
+    
+    /**
+     * Сохранение данных в базу данных
+     */
+    private static function saveToDatabase($chat_id, $user_data)
+    {
+        try {
+            $db = Database::getInstance();
+            
+            $data = [
+                'chat_id' => $chat_id,
+                'name' => $user_data['name'],
+                'age' => $user_data['age'],
+                'phone' => $user_data['phone'],
+                'photo_filename' => $user_data['photo_filename'] ?? null,
+                'region_id' => $user_data['region_id'],
+                'region_name' => Cities::getRegionName($user_data['region_id']),
+                'city_id' => $user_data['city_id'],
+                'city_name' => Cities::getCityName($user_data['region_id'], $user_data['city_id']),
+                'job_id' => $user_data['job_id'],
+                'job_name' => Jobs::getJobName($user_data['job_id']),
+                'language' => 'ru'
+            ];
+            
+            $resume_id = $db->saveResume($data);
+            
+            if ($resume_id) {
+                echo "✅ Резюме пользователя $chat_id успешно сохранено в БД (ID: $resume_id)\n";
+            }
+        } catch (\Exception $e) {
+            echo "❌ Ошибка при сохранении в БД: " . $e->getMessage() . "\n";
+        }
     }
 }
