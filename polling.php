@@ -5,6 +5,7 @@ use Telegram\Bot\Api;
 use App\BotSettings;
 use App\Keyboards\ru\LanguageKeyboard;
 use App\Info\RuInfoHandler;
+use App\Info\UzInfoHandler;
 
 $telegram = new Api(BotSettings::TOKEN);
 
@@ -44,8 +45,7 @@ while (true) {
                             break;
                             
                         case 'uz':
-                            // Добавьте обработчик для узбекского языка
-                            // UzInfoHandler::handlePhoto($telegram, $chat_id, $photo_array, $message_id, $user_states);
+                            UzInfoHandler::handlePhoto($telegram, $chat_id, $photo_array, $message_id, $user_states);
                             break;
                     }
                 }
@@ -144,11 +144,13 @@ while (true) {
                             'language' => 'uz'
                         ];
                         
-                        // Здесь добавьте обработку узбекского языка
+                        $text = UzInfoHandler::getStartMessage();
+                        $keyboard = \App\Keyboards\uz\LanguageKeyboard::getBackKeyboard();
+                        
                         $telegram->sendMessage([
                             'chat_id' => $chat_id,
-                            'text' => "✅ Til tanlandi: O'zbekcha\n\nIltimos, FIOingizni kiriting:",
-                            'reply_markup' => LanguageKeyboard::getBackKeyboard()
+                            'text' => $text,
+                            'reply_markup' => $keyboard
                         ]);
                         echo "✅ Выбран узбекский язык, начат процесс от $chat_id\n";
                     }
@@ -214,8 +216,7 @@ while (true) {
                             break;
                             
                         case 'uz':
-                            // Добавьте обработчик для узбекского языка
-                            // UzInfoHandler::handleUserInput($telegram, $chat_id, $user_text, $message_id, $user_states);
+                            UzInfoHandler::handleUserInput($telegram, $chat_id, $user_text, $message_id, $user_states);
                             break;
                     }
                 }

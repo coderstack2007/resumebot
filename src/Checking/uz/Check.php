@@ -1,10 +1,10 @@
 <?php
-namespace App\Checking\ru;
+namespace App\Checking\uz;
 
-use App\Backs\ru\BackHandler;
+use App\Backs\uz\BackHandler;
 
 /**
- * Класс для проверки данных на русском языке
+ * Класс для проверки данных на узбекском языке
  */
 class Check
 {
@@ -37,7 +37,7 @@ class Check
      */
     public static function checkName($name): bool
     {
-        return preg_match('/^[А-Яа-яЁёA-Za-z\s\-]+$/u', $name);
+        return preg_match('/^[А-Яа-яЁёA-Za-z\s\-\']+$/u', $name);
     }
     
     /**
@@ -56,11 +56,11 @@ class Check
     }
     
     /**
-     * Проверка на использование только русских букв (без латиницы)
+     * Проверка на использование только узбекских/русских букв (без латиницы для основного текста)
      */
     public static function checkRussianOnly($text): bool
     {
-        // Проверяем, что текст содержит только русские буквы, пробелы и дефисы
+        // Проверяем, что текст содержит только русские/узбекские буквы, пробелы и дефисы
         // Если найдены латинские буквы (a-z, A-Z) - возвращаем false
         return !preg_match('/[a-zA-Z]/', $text);
     }
@@ -116,7 +116,7 @@ class Check
      */
     public static function getMaxLengthError(): string
     {
-        return '❌ Ошибка: текст не должен превышать 50 символов. Попробуйте еще раз:';
+        return '❌ Xatolik: matn 50 belgidan oshmasligi kerak. Yana bir marta urinib ko\'ring:';
     }
     
     /**
@@ -124,7 +124,7 @@ class Check
      */
     public static function getNotEmptyError(): string
     {
-        return '❌ Ошибка: поле не может быть пустым. Попробуйте еще раз:';
+        return '❌ Xatolik: maydon bo\'sh bo\'lishi mumkin emas. Yana bir marta urinib ko\'ring:';
     }
     
     /**
@@ -132,7 +132,7 @@ class Check
      */
     public static function getNameError(): string
     {
-        return '❌ Имя может содержать только буквы, пробелы и дефисы. Попробуйте еще раз:';
+        return '❌ Ism faqat harflar, bo\'sh joylar va defislardan iborat bo\'lishi mumkin. Yana bir marta urinib ko\'ring:';
     }
     
     /**
@@ -140,7 +140,7 @@ class Check
      */
     public static function getAgeNumberError(): string
     {
-        return '❌ Возраст должен быть числом. Попробуйте еще раз:';
+        return '❌ Yosh raqam bo\'lishi kerak. Yana bir marta urinib ko\'ring:';
     }
     
     /**
@@ -148,7 +148,7 @@ class Check
      */
     public static function getAgeRangeError(): string
     {
-        return '❌ Возраст должен быть в диапазоне от 15 до 60 лет. Попробуйте еще раз:';
+        return '❌ Yosh 15 dan 60 yoshgacha bo\'lishi kerak. Yana bir marta urinib ko\'ring:';
     }
     
     /**
@@ -156,10 +156,10 @@ class Check
      */
     public static function getPhoneError(): string
     {
-        return "❌ Неверный формат номера телефона!\n\n" .
-               "Правильный формат: +998XXXXXXXXX\n" .
-               "Пример: +998901234567\n\n" .
-               "Попробуйте еще раз:";
+        return "❌ Telefon raqami formati noto'g'ri!\n\n" .
+               "To'g'ri format: +998XXXXXXXXX\n" .
+               "Misol: +998901234567\n\n" .
+               "Yana bir marta urinib ko'ring:";
     }
     
     /**
@@ -167,7 +167,7 @@ class Check
      */
     public static function getNameAcceptedMessage(): string
     {
-        return "✅ ФИО принято!\n\n🎂 Теперь введите ваш возраст (15-60 лет):";
+        return "✅ FIO qabul qilindi!\n\n🎂 Endi yoshingizni kiriting (15-60 yosh):";
     }
     
     /**
@@ -175,7 +175,7 @@ class Check
      */
     public static function getAgeAcceptedMessage(): string
     {
-        return "✅ Возраст принят!\n\n📱 Теперь введите ваш номер телефона в формате: +998XXXXXXXXX";
+        return "✅ Yosh qabul qilindi!\n\n📱 Endi telefon raqamingizni kiriting: +998XXXXXXXXX formatida";
     }
     
     /**
@@ -183,7 +183,7 @@ class Check
      */
     public static function getPhoneAcceptedMessage(): string
     {
-        return "✅ Номер телефона принят!";
+        return "✅ Telefon raqami qabul qilindi!";
     }
     
     /**
@@ -222,7 +222,7 @@ class Check
      */
     public static function getImageSizeError(): string
     {
-        return "❌ Ошибка: размер изображения не должен превышать 5 МБ.\n\nПопробуйте отправить другое фото:";
+        return "❌ Xatolik: rasm hajmi 5 MB dan oshmasligi kerak.\n\nBoshqa rasm yuboring:";
     }
     
     /**
@@ -230,9 +230,9 @@ class Check
      */
     public static function getImageFormatError(): string
     {
-        return "❌ Ошибка: неподдерживаемый формат изображения!\n\n" .
-               "Разрешенные форматы: PNG, JPG/JPEG\n\n" .
-               "Попробуйте отправить другое фото:";
+        return "❌ Xatolik: rasm formati qo'llab-quvvatlanmaydi!\n\n" .
+               "Ruxsat etilgan formatlar: PNG, JPG/JPEG\n\n" .
+               "Boshqa rasm yuboring:";
     }
     
     /**
@@ -240,9 +240,9 @@ class Check
      */
     public static function getImageRequiredError(): string
     {
-        return "❌ Ошибка: пожалуйста, отправьте фотографию (не файл и не текст).\n\n" .
-               "Разрешенные форматы: PNG, JPG/JPEG\n" .
-               "Максимальный размер: 5 МБ";
+        return "❌ Xatolik: iltimos, rasm yuboring (fayl yoki matn emas).\n\n" .
+               "Ruxsat etilgan formatlar: PNG, JPG/JPEG\n" .
+               "Maksimal hajmi: 5 MB";
     }
     
     /**
@@ -250,9 +250,9 @@ class Check
      */
     public static function getPhotoRequestMessage(): string
     {
-        return "📸 Теперь отправьте ваше фото:\n\n" .
-               "✅ Разрешенные форматы: PNG, JPG/JPEG\n" .
-               "✅ Максимальный размер: 5 МБ";
+        return "📸 Endi rasmingizni yuboring:\n\n" .
+               "✅ Ruxsat etilgan formatlar: PNG, JPG/JPEG\n" .
+               "✅ Maksimal hajmi: 5 MB";
     }
     
     /**
@@ -260,6 +260,6 @@ class Check
      */
     public static function getPhotoAcceptedMessage(): string
     {
-        return "✅ Фото успешно получено и сохранено!";
+        return "✅ Rasm muvaffaqiyatli qabul qilindi va saqlandi!";
     }
 }
