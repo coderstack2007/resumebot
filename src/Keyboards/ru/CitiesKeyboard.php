@@ -1,7 +1,7 @@
 <?php
 namespace App\Keyboards\ru;
 
-use App\Cities\RuCities;
+use App\Cities\ru\Cities;
 
 class CitiesKeyboard
 {
@@ -10,7 +10,7 @@ class CitiesKeyboard
      */
     public static function getRegionsKeyboard()
     {
-        $regions = RuCities::getRegions();
+        $regions = Cities::getRegions();
         $buttons = [];
         
         // Создаем кнопки по 2 в ряд
@@ -51,7 +51,7 @@ class CitiesKeyboard
      */
     public static function getCitiesKeyboard(int $region_id)
     {
-        $cities = RuCities::getCitiesByRegion($region_id);
+        $cities = Cities::getCitiesByRegion($region_id);
         $buttons = [];
         
         // Создаем кнопки по 2 в ряд

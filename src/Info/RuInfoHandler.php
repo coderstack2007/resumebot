@@ -6,9 +6,9 @@ use App\Keyboards\ru\NameKeyboard;
 use App\Keyboards\ru\CitiesKeyboard;
 use App\Keyboards\ru\JobsKeyboard;
 use App\Checking\ru\Check;
-use App\Cities\RuCities;
+use App\Cities\ru\Cities;
 use App\Jobs\Ru\Jobs;
-use App\Backs\BackHandler;
+use App\Backs\ru\BackHandler;
 
 class RuInfoHandler
 {
@@ -310,7 +310,7 @@ class RuInfoHandler
     private static function handleRegionSelection($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
         // Ищем регион по названию
-        $regions = RuCities::getRegions();
+        $regions = Cities::getRegions();
         $region_id = array_search($user_text, $regions);
         
         if ($region_id === false) {
@@ -349,7 +349,7 @@ class RuInfoHandler
         $region_id = $user_states[$chat_id]['region_id'];
         
         // Ищем город по названию
-        $cities = RuCities::getCitiesByRegion($region_id);
+        $cities = Cities::getCitiesByRegion($region_id);
         $city_id = array_search($user_text, $cities);
         
         if ($city_id === false) {
@@ -414,8 +414,8 @@ class RuInfoHandler
         $region_id = $user_states[$chat_id]['region_id'];
         $city_id = $user_states[$chat_id]['city_id'];
         
-        $region_name = RuCities::getRegionName($region_id);
-        $city_name = RuCities::getCityName($region_id, $city_id);
+        $region_name = Cities::getRegionName($region_id);
+        $city_name = Cities::getCityName($region_id, $city_id);
         $job_name = $user_text;
         
         // Выводим итоговую информацию

@@ -1,7 +1,7 @@
 <?php
-namespace App\Cities;
-use App\K;
-class RuCities
+namespace App\Cities\ru;
+
+class Cities
 {
     /**
      * Получить все регионы
