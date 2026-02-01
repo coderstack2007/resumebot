@@ -5,6 +5,7 @@ use App\Keyboards\uz\LanguageKeyboard;
 use App\Keyboards\uz\NameKeyboard;
 use App\Keyboards\uz\CitiesKeyboard;
 use App\Keyboards\uz\JobsKeyboard;
+use App\Keyboards\uz\NumberKeyboard;
 use App\Checking\uz\Check;
 use App\Cities\uz\Cities;
 use App\Jobs\Uz\Jobs;
@@ -61,6 +62,51 @@ class UzInfoHandler
         }
         
         return false;
+    }
+
+    /**
+     * Обработка contact (скинутый номер через кнопку "Nomeringiz berishlar")
+     */
+    public static function handleContact($telegram, $chat_id, $contact, $message_id, &$user_states)
+    {
+        if (!Check::checkUserStateExists($chat_id, $user_states)) {
+            return false;
+        }
+
+        $user_state = $user_states[$chat_id];
+
+        // contact допустим только на шаге 3 (ввод телефона)
+        if ($user_state['step'] !== 3) {
+            return false;
+        }
+
+        $phone = $contact['phone_number'] ?? null;
+
+        if (!$phone) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text'    => "❌ Nomer olish mumkin bolmadi. Qo'l bilan kiriting yoki qayta urinib ko'ring:",
+                'reply_markup' => NumberKeyboard::getPhoneKeyboard()
+            ]);
+            return false;
+        }
+
+        // Нормализуем: убираем пробелы, скобки, дефисы
+        $cleanPhone = preg_replace('/[\s\(\)\-]/', '', $phone);
+
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+
+        $user_states[$chat_id]['phone'] = $cleanPhone;
+        $user_states[$chat_id]['step']  = 4;
+
+        $telegram->sendMessage([
+            'chat_id' => $chat_id,
+            'text'    => Check::getPhoneAcceptedMessage() . "\n\n" . Check::getPhotoRequestMessage(),
+            'reply_markup' => NameKeyboard::getBackName()
+        ]);
+
+        return true;
     }
     
     public static function handlePhoto($telegram, $chat_id, $photo_array, $message_id, &$user_states)
@@ -154,7 +200,10 @@ class UzInfoHandler
             case 1:
                 return LanguageKeyboard::getBackKeyboard();
             case 2:
+                return NameKeyboard::getBackName();
             case 3:
+                // Шаг 3 — кнопка "Nomeringiz berishlar" + назад
+                return NumberKeyboard::getPhoneKeyboard();
             case 4:
                 return NameKeyboard::getBackName();
             case 5:
@@ -217,7 +266,7 @@ class UzInfoHandler
         $telegram->sendMessage([
             'chat_id' => $chat_id,
             'text' => Check::getAgeAcceptedMessage(),
-            'reply_markup' => NameKeyboard::getBackName()
+            'reply_markup' => NumberKeyboard::getPhoneKeyboard()
         ]);
         
         return true;
@@ -230,7 +279,7 @@ class UzInfoHandler
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
                 'text' => Check::getPhoneError(),
-                'reply_markup' => NameKeyboard::getBackName()
+                'reply_markup' => NumberKeyboard::getPhoneKeyboard()
             ]);
             return false;
         }
@@ -377,7 +426,6 @@ class UzInfoHandler
                 'reply_markup' => json_encode(['remove_keyboard' => true])
             ]);
             
-            // Сохраняем в БД — только _id, без name
             self::saveToDatabase($chat_id, $user_states[$chat_id]);
             
             unset($user_states[$chat_id]);
@@ -410,9 +458,6 @@ class UzInfoHandler
         return false;
     }
     
-    /**
-     * Сохранение в БД — только id-поля, без name
-     */
     private static function saveToDatabase($chat_id, $user_data)
     {
         try {

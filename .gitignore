@@ -1,0 +1,5 @@
+vendor/
+src/BotSettings.php
+
+# Игнорируем всё в images/, 
+src/images/*

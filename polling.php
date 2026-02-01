@@ -1,4 +1,4 @@
-    <?php
+<?php
     require_once 'vendor/autoload.php';
 
     use Telegram\Bot\Api;
@@ -27,18 +27,39 @@
             
             foreach ($updates as $update) {
                 $last_update_id = $update['update_id'];
+
+                // ─── Обработка contact (кнопка "Поделиться номером") ───
+                if (isset($update['message']) && isset($update['message']['contact'])) {
+                    $chat_id    = $update['message']['chat']['id'];
+                    $contact    = $update['message']['contact'];
+                    $message_id = $update['message']['message_id'];
+
+                    if (isset($user_states[$chat_id]) && isset($user_states[$chat_id]['step'])) {
+                        $user_state = $user_states[$chat_id];
+
+                        switch ($user_state['language']) {
+                            case 'ru':
+                                RuInfoHandler::handleContact($telegram, $chat_id, $contact, $message_id, $user_states);
+                                break;
+                            case 'uz':
+                                UzInfoHandler::handleContact($telegram, $chat_id, $contact, $message_id, $user_states);
+                                break;
+                        }
+                    }
+
+                    echo "✅ Обработан contact от $chat_id\n";
+                    continue;
+                }
                 
-                // Обработка фото
+                // ─── Обработка фото ───
                 if (isset($update['message']) && isset($update['message']['photo'])) {
                     $chat_id = $update['message']['chat']['id'];
                     $photo_array = $update['message']['photo'];
                     $message_id = $update['message']['message_id'];
                     
-                    // Проверяем, находится ли пользователь в процессе заполнения
                     if (isset($user_states[$chat_id]) && isset($user_states[$chat_id]['step'])) {
                         $user_state = $user_states[$chat_id];
                         
-                        // Обработка в зависимости от выбранного языка
                         switch ($user_state['language']) {
                             case 'ru':
                                 RuInfoHandler::handlePhoto($telegram, $chat_id, $photo_array, $message_id, $user_states);
@@ -54,15 +75,14 @@
                     continue;
                 }
                 
-                // Обработка только текстовых сообщений
+                // ─── Обработка текстовых сообщений ───
                 if (isset($update['message']) && isset($update['message']['text'])) {
                     $chat_id = $update['message']['chat']['id'];
                     $user_text = trim($update['message']['text']);
                     $message_id = $update['message']['message_id'];
                     
-                    // Обработка /start - показываем главное меню
+                    // Обработка /start
                     if (strtolower($user_text) === '/start') {
-                        // Сбрасываем состояние при /start
                         if (isset($user_states[$chat_id])) {
                             unset($user_states[$chat_id]);
                         }
@@ -76,12 +96,10 @@
                         continue;
                     }
                     
-                    // Проверяем, находится ли пользователь в процессе заполнения резюме
                     $is_in_process = isset($user_states[$chat_id]) && isset($user_states[$chat_id]['step']);
                     
-                    // Обработка кнопки "Оставить резюме" - показываем выбор языка
+                    // Обработка кнопки "Оставить резюме"
                     if (LanguageKeyboard::isResumeButton($user_text)) {
-                        // Удаляем сообщение пользователя
                         try {
                             $telegram->deleteMessage([
                                 'chat_id' => $chat_id,
@@ -91,7 +109,6 @@
                             echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
                         }
                         
-                        // Устанавливаем состояние "выбор языка"
                         $user_states[$chat_id] = [
                             'state' => 'choosing_language'
                         ];
@@ -105,12 +122,11 @@
                         continue;
                     }
                     
-                    // Обработка выбора языка (после нажатия "Оставить резюме")
+                    // Обработка выбора языка
                     if (LanguageKeyboard::isLanguageButton($user_text) && 
                         isset($user_states[$chat_id]) && 
                         $user_states[$chat_id]['state'] === 'choosing_language') {
                         
-                        // Удаляем сообщение пользователя
                         try {
                             $telegram->deleteMessage([
                                 'chat_id' => $chat_id,
@@ -120,7 +136,6 @@
                             echo "⚠️ Не удалось удалить сообщение: " . $e->getMessage() . "\n";
                         }
                         
-                        // Устанавливаем язык и начинаем процесс
                         if ($user_text === '🇷🇺 Русский') {
                             $user_states[$chat_id] = [
                                 'state' => 'waiting_for_name',
@@ -158,11 +173,10 @@
                         continue;
                     }
                     
-                    // Если получили неизвестную команду и пользователь не в процессе
+                    // Неизвестная команда и юзер не в процессе
                     if (!$is_in_process && 
                         (!isset($user_states[$chat_id]) || $user_states[$chat_id]['state'] !== 'choosing_language')) {
                         
-                        // Удаляем сообщение пользователя
                         try {
                             $telegram->deleteMessage([
                                 'chat_id' => $chat_id,
@@ -181,12 +195,11 @@
                         continue;
                     }
                     
-                    // Если пользователь на этапе выбора языка, но ввел что-то не то
+                    // Юзер на выборе языка но ввёл не то
                     if (isset($user_states[$chat_id]) && 
                         $user_states[$chat_id]['state'] === 'choosing_language' &&
                         !LanguageKeyboard::isLanguageButton($user_text)) {
                         
-                        // Удаляем сообщение пользователя
                         try {
                             $telegram->deleteMessage([
                                 'chat_id' => $chat_id,
@@ -205,11 +218,10 @@
                         continue;
                     }
                     
-                    // Обработка ввода данных если пользователь в процессе заполнения
+                    // Юзер в процессе заполнения — передаём обработку
                     if ($is_in_process) {
                         $user_state = $user_states[$chat_id];
                         
-                        // Обработка в зависимости от выбранного языка
                         switch ($user_state['language']) {
                             case 'ru':
                                 RuInfoHandler::handleUserInput($telegram, $chat_id, $user_text, $message_id, $user_states);
