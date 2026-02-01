@@ -27,9 +27,7 @@ try {
             echo "🎂 Возраст: " . $resume['age'] . " лет\n";
             echo "📱 Телефон: " . $resume['phone'] . "\n";
             echo "📸 Фото: " . ($resume['photo_filename'] ?? 'не указано') . "\n";
-            echo "📍 Регион: " . $resume['region_name'] . " (ID: " . $resume['region_id'] . ")\n";
-            echo "🏙 Город: " . $resume['city_name'] . " (ID: " . $resume['city_id'] . ")\n";
-            echo "💼 Вакансия: " . $resume['job_name'] . " (ID: " . $resume['job_id'] . ")\n";
+
             echo "🌐 Язык: " . $resume['language'] . "\n";
             echo "📅 Создано: " . $resume['created_at'] . "\n";
             echo "\n";
