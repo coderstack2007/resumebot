@@ -5,6 +5,7 @@ use App\Keyboards\ru\LanguageKeyboard;
 use App\Keyboards\ru\NameKeyboard;
 use App\Keyboards\ru\CitiesKeyboard;
 use App\Keyboards\ru\JobsKeyboard;
+use App\Keyboards\ru\NumberKeyboard;
 use App\Checking\ru\Check;
 
 class BackHandler
@@ -53,7 +54,6 @@ class BackHandler
      */
     private static function handleBackToLanguage($telegram, $chat_id, &$user_states)
     {
-        // Возвращаемся к выбору языка
         $user_states[$chat_id] = [
             'state' => 'choosing_language'
         ];
@@ -100,14 +100,14 @@ class BackHandler
                 'reply_markup' => NameKeyboard::getBackName()
             ]);
         } elseif ($step == 4) {
-            // Возврат к вводу телефона
+            // Возврат к вводу телефона — нужна кнопка "Поделиться номером"
             $user_states[$chat_id]['step'] = 3;
             unset($user_states[$chat_id]['photo_filename']);
             
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
                 'text' => Check::getAgeAcceptedMessage(),
-                'reply_markup' => NameKeyboard::getBackName()
+                'reply_markup' => NumberKeyboard::getPhoneKeyboard()
             ]);
         } elseif ($step == 5) {
             // Возврат к загрузке фото
@@ -119,6 +119,16 @@ class BackHandler
                 'chat_id' => $chat_id,
                 'text' => Check::getPhotoRequestMessage(),
                 'reply_markup' => NameKeyboard::getBackName()
+            ]);
+        } elseif ($step == 8) {
+            // Возврат с подтверждения на выбор вакансии
+            $user_states[$chat_id]['step'] = 7;
+            unset($user_states[$chat_id]['job_id']);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => "💼 Выберите вакансию, на которую хотите откликнуться:",
+                'reply_markup' => JobsKeyboard::getJobsKeyboard()
             ]);
         }
         
