@@ -148,7 +148,7 @@ class Check
      */
     public static function getAgeRangeError(): string
     {
-        return '❌ Возраст должен быть в диапазоне от 15 до 60 лет. Попробуйте еще раз:';
+        return '❌ Возраст должен быть в диапазоне от 15 до 60 лет.';
     }
     
     /**

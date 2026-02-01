@@ -148,7 +148,7 @@ class Check
      */
     public static function getAgeRangeError(): string
     {
-        return '❌ Yosh 15 dan 60 yoshgacha bo\'lishi kerak. Yana bir marta urinib ko\'ring:';
+        return '❌ Yosh 15 dan 60 yoshgacha bo\'lishi kerak. ';
     }
     
     /**
