@@ -109,91 +109,6 @@ class RuInfoHandler
         return true;
     }
 
-    public static function handlePhoto($telegram, $chat_id, $photo_array, $message_id, &$user_states)
-    {
-        if (!Check::checkUserStateExists($chat_id, $user_states)) {
-            return false;
-        }
-        
-        $user_state = $user_states[$chat_id];
-        
-        if ($user_state['step'] != 4) {
-            return false;
-        }
-        
-        $photo = end($photo_array);
-        $file_id = $photo['file_id'];
-        $file_size = $photo['file_size'] ?? 0;
-        
-        if (!Check::checkImageSize($file_size)) {
-            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => Check::getImageSizeError(),
-                'reply_markup' => NameKeyboard::getBackName()
-            ]);
-            return false;
-        }
-        
-        try {
-            $file_info = $telegram->getFile(['file_id' => $file_id]);
-            $file_path = $file_info['file_path'];
-            $extension = pathinfo($file_path, PATHINFO_EXTENSION);
-            
-            if (!in_array(strtolower($extension), ['jpg', 'jpeg', 'png'])) {
-                BackHandler::deleteMessage($telegram, $chat_id, $message_id);
-                $telegram->sendMessage([
-                    'chat_id' => $chat_id,
-                    'text' => Check::getImageFormatError(),
-                    'reply_markup' => NameKeyboard::getBackName()
-                ]);
-                return false;
-            }
-            
-            $file_url = "https://api.telegram.org/file/bot" . \App\BotSettings::TOKEN . "/$file_path";
-            $file_content = file_get_contents($file_url);
-            
-            if ($file_content === false) {
-                throw new \Exception("Не удалось скачать файл");
-            }
-            
-            $images_dir = dirname(__DIR__, 2) . '/src/images';
-            if (!file_exists($images_dir)) {
-                mkdir($images_dir, 0777, true);
-            }
-            
-            $filename = $chat_id . '_' . time() . '.' . $extension;
-            $save_path = $images_dir . '/' . $filename;
-            
-            if (file_put_contents($save_path, $file_content) === false) {
-                throw new \Exception("Не удалось сохранить файл");
-            }
-            
-            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
-            
-            $user_states[$chat_id]['photo_filename'] = $filename;
-            $user_states[$chat_id]['step'] = 5;
-            
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => Check::getPhotoAcceptedMessage() . "\n\n📍 Выберите ваш регион:",
-                'reply_markup' => CitiesKeyboard::getRegionsKeyboard()
-            ]);
-            
-            return true;
-            
-        } catch (\Exception $e) {
-            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => "❌ Произошла ошибка при сохранении фото: " . $e->getMessage() . "\n\nПопробуйте еще раз:",
-                'reply_markup' => NameKeyboard::getBackName()
-            ]);
-            echo "❌ Ошибка при сохранении фото: " . $e->getMessage() . "\n";
-            return false;
-        }
-    }
-    
     private static function getKeyboardForStep($step, $user_state = [])
     {
         switch ($step) {
@@ -359,7 +274,7 @@ class RuInfoHandler
         return true;
     }
     
-    private static function handleJobSelection($telegram, $chat_id, $user_text, $message_id, &$user_states)
+   private static function handleJobSelection($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
         $jobs = Jobs::getJobs();
         $job_id = array_search($user_text, $jobs);
@@ -386,21 +301,42 @@ class RuInfoHandler
         $response_text .= "👤 ФИО: " . $user_states[$chat_id]['name'] . "\n";
         $response_text .= "🎂 Возраст: " . $user_states[$chat_id]['age'] . " лет\n";
         $response_text .= "📱 Телефон: " . $user_states[$chat_id]['phone'] . "\n";
-        $response_text .= "📸 Фото: " . ($user_states[$chat_id]['photo_filename'] ?? 'не указано') . "\n";
         $response_text .= "📍 Регион: $region_name\n";
         $response_text .= "🏙 Город: $city_name\n";
         $response_text .= "💼 Вакансия: $user_text\n";
         $response_text .= "\n❓ Все данные указаны верно?";
         
-        $telegram->sendMessage([
-            'chat_id' => $chat_id,
-            'text' => $response_text,
-            'reply_markup' => JobsKeyboard::getConfirmationKeyboard()
-        ]);
+        // Проверяем, есть ли фотография
+        if (isset($user_states[$chat_id]['photo_file_id']) && !empty($user_states[$chat_id]['photo_file_id'])) {
+            // Отправляем сообщение с фотографией
+            $telegram->sendPhoto([
+                'chat_id' => $chat_id,
+                'photo' => $user_states[$chat_id]['photo_file_id'],
+                'caption' => $response_text,
+                'reply_markup' => JobsKeyboard::getConfirmationKeyboard()
+            ]);
+        } else {
+            // Отправляем текстовое сообщение без фотографии
+            $response_text = "📋 Проверьте правильность введенных данных:\n\n";
+            $response_text .= "👤 ФИО: " . $user_states[$chat_id]['name'] . "\n";
+            $response_text .= "🎂 Возраст: " . $user_states[$chat_id]['age'] . " лет\n";
+            $response_text .= "📱 Телефон: " . $user_states[$chat_id]['phone'] . "\n";
+            $response_text .= "📸 Фото: не загружено\n";
+            $response_text .= "📍 Регион: $region_name\n";
+            $response_text .= "🏙 Город: $city_name\n";
+            $response_text .= "💼 Вакансия: $user_text\n";
+            $response_text .= "\n❓ Все данные указаны верно?";
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => $response_text,
+                'reply_markup' => JobsKeyboard::getConfirmationKeyboard()
+            ]);
+        }
         
         return true;
     }
-    
+
     private static function handleConfirmation($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
         if (JobsKeyboard::isConfirmButton($user_text)) {
@@ -414,74 +350,142 @@ class RuInfoHandler
             $response_text .= "👤 ФИО: " . $user_states[$chat_id]['name'] . "\n";
             $response_text .= "🎂 Возраст: " . $user_states[$chat_id]['age'] . " лет\n";
             $response_text .= "📱 Телефон: " . $user_states[$chat_id]['phone'] . "\n";
-            $response_text .= "📸 Фото: " . ($user_states[$chat_id]['photo_filename'] ?? 'не указано') . "\n";
             $response_text .= "📍 Регион: $region_name\n";
             $response_text .= "🏙 Город: $city_name\n";
             $response_text .= "💼 Вакансия: $job_name\n";
             $response_text .= "\n🎉 Ваш отклик отправлен! Мы свяжемся с вами в ближайшее время.";
             
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => $response_text,
-                'reply_markup' => json_encode(['remove_keyboard' => true])
-            ]);
+            // Если есть фотография, отправляем с фото
+            if (isset($user_states[$chat_id]['photo_file_id']) && !empty($user_states[$chat_id]['photo_file_id'])) {
+                $telegram->sendPhoto([
+                    'chat_id' => $chat_id,
+                    'photo' => $user_states[$chat_id]['photo_file_id'],
+                    'caption' => $response_text,
+                    'reply_markup' => json_encode(['remove_keyboard' => true])
+                ]);
+            } else {
+                $response_text .= "\n📸 Фото: не загружено";
+                $telegram->sendMessage([
+                    'chat_id' => $chat_id,
+                    'text' => $response_text,
+                    'reply_markup' => json_encode(['remove_keyboard' => true])
+                ]);
+            }
             
             self::saveToDatabase($chat_id, $user_states[$chat_id]);
-            
             unset($user_states[$chat_id]);
-            
-            return true;
-        } 
-        elseif ($user_text === '⬅️ Назад') {
-            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
-            
-            $user_states[$chat_id]['step'] = 7;
-            unset($user_states[$chat_id]['job_id']);
-            
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => "💼 Выберите вакансию, на которую хотите откликнуться:",
-                'reply_markup' => JobsKeyboard::getJobsKeyboard()
-            ]);
             
             return true;
         }
         
-        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+      
         
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
         $telegram->sendMessage([
             'chat_id' => $chat_id,
-            'text' => '❌ Пожалуйста, используйте кнопки для ответа.',
+            'text' => '❌ Пожалуйста, используйте кнопки для подтверждения или отмены.',
             'reply_markup' => JobsKeyboard::getConfirmationKeyboard()
         ]);
         
         return false;
     }
+
+    // Обработчик фотографии - ВАЖНО! Сохраняем file_id
+    public static function handlePhoto($telegram, $chat_id, $photo_array, $message_id, &$user_states)
+    {
+        if (!isset($user_states[$chat_id]) || $user_states[$chat_id]['step'] !== 4) {
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => '❌ Ошибка: отправьте фото в нужный момент.',
+                'reply_markup' => LanguageKeyboard::getBackKeyboard()
+            ]);
+            return;
+        }
+        
+        try {
+            // Получаем самое большое фото из массива
+            $photo = end($photo_array);
+            $file_id = $photo['file_id'];
+            
+            // СОХРАНЯЕМ file_id для последующего использования
+            $user_states[$chat_id]['photo_file_id'] = $file_id;
+            
+            // Получаем информацию о файле
+            $file_info = $telegram->getFile(['file_id' => $file_id]);
+            $file_path = $file_info['file_path'];
+            
+            // Скачиваем файл
+            $token = \App\BotSettings::TOKEN;
+            $file_url = "https://api.telegram.org/file/bot{$token}/{$file_path}";
+            $file_content = file_get_contents($file_url);
+            
+            if ($file_content === false) {
+                throw new \Exception('Не удалось скачать файл');
+            }
+            
+            // Генерируем уникальное имя файла
+            $filename = $chat_id . '_' . time() . '.jpg';
+            $save_path = __DIR__ . '/../../src/images/' . $filename;
+            
+            // Создаём папку если её нет
+            $dir = dirname($save_path);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0777, true);
+            }
+            
+            // Сохраняем файл
+            if (file_put_contents($save_path, $file_content) === false) {
+                throw new \Exception('Не удалось сохранить файл');
+            }
+            
+            // Сохраняем имя файла в состоянии
+            $user_states[$chat_id]['photo_filename'] = $filename;
+            $user_states[$chat_id]['step'] = 5;
+            
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => "✅ Фото получено!\n\n📍 Теперь выберите ваш регион:",
+                'reply_markup' => CitiesKeyboard::getRegionsKeyboard()
+            ]);
+            
+        } catch (\Exception $e) {
+            echo "❌ Ошибка при обработке фото: " . $e->getMessage() . "\n";
+            
+            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+            
+            $telegram->sendMessage([
+                'chat_id' => $chat_id,
+                'text' => '❌ Произошла ошибка при обработке фото. Попробуйте снова.',
+                'reply_markup' => LanguageKeyboard::getBackKeyboard()
+            ]);
+        }
+    }
     
-    private static function saveToDatabase($chat_id, $user_data)
+    private static function saveToDatabase($chat_id, $data)
     {
         try {
             $db = Database::getInstance();
             
-            $data = [
+            $resume_data = [
                 'chat_id'        => $chat_id,
-                'name'           => $user_data['name'],
-                'age'            => $user_data['age'],
-                'phone'          => $user_data['phone'],
-                'photo_filename' => $user_data['photo_filename'] ?? null,
-                'region_id'      => $user_data['region_id'],
-                'city_id'        => $user_data['city_id'],
-                'job_id'         => $user_data['job_id'],
-                'language'       => 'ru',
+                'name'           => $data['name'],
+                'age'            => $data['age'],
+                'phone'          => $data['phone'],
+                'photo_filename' => $data['photo_filename'] ?? null,
+                'region_id'      => $data['region_id'],
+                'city_id'        => $data['city_id'],
+                'job_id'         => $data['job_id'],
+                'language'       => 'ru'
             ];
             
-            $resume_id = $db->saveResume($data);
+            $db->saveResume($resume_data);
             
-            if ($resume_id) {
-                echo "✅ Резюме пользователя $chat_id успешно сохранено в БД (ID: $resume_id)\n";
-            }
         } catch (\Exception $e) {
-            echo "❌ Ошибка при сохранении в БД: " . $e->getMessage() . "\n";
+            echo "❌ Ошибка при сохранении в базу данных: " . $e->getMessage() . "\n";
         }
     }
+
 }

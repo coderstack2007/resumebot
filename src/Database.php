@@ -9,24 +9,30 @@ class Database
     private static $instance = null;
     private $connection;
     
-    const DB_PATH = __DIR__ . '/../database/resumes.db';
+    // Настройки подключения к MySQL
+    const DB_HOST = 'localhost:8889';
+    const DB_NAME = 'resume_bot';
+    const DB_USER = 'root';
+    const DB_PASS = 'root';
+    const DB_CHARSET = 'utf8mb4';
     
     private function __construct()
     {
         try {
-            $db_dir = dirname(self::DB_PATH);
-            if (!file_exists($db_dir)) {
-                mkdir($db_dir, 0777, true);
-            }
+            $dsn = "mysql:host=" . self::DB_HOST . ";dbname=" . self::DB_NAME . ";charset=" . self::DB_CHARSET;
             
-            $this->connection = new PDO('sqlite:' . self::DB_PATH);
-            $this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            $this->connection->exec("PRAGMA foreign_keys = ON");
+            $options = [
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES   => false,
+            ];
+            
+            $this->connection = new PDO($dsn, self::DB_USER, self::DB_PASS, $options);
             
             $this->createTables();
             $this->seedTables();
             
-            echo "✅ База данных успешно подключена\n";
+            echo "✅ База данных MySQL успешно подключена\n";
         } catch (PDOException $e) {
             echo "❌ Ошибка подключения к базе данных: " . $e->getMessage() . "\n";
             throw $e;
@@ -55,50 +61,53 @@ class Database
         // Таблица вакансий
         $this->connection->exec("
             CREATE TABLE IF NOT EXISTS jobs (
-                id INTEGER PRIMARY KEY,
-                name_ru TEXT NOT NULL,
-                name_uz TEXT NOT NULL
-            )
+                id INT PRIMARY KEY,
+                name_ru VARCHAR(255) NOT NULL,
+                name_uz VARCHAR(255) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
 
         // Таблица регионов
         $this->connection->exec("
             CREATE TABLE IF NOT EXISTS regions (
-                id INTEGER PRIMARY KEY,
-                name_ru TEXT NOT NULL,
-                name_uz TEXT NOT NULL
-            )
+                id INT PRIMARY KEY,
+                name_ru VARCHAR(255) NOT NULL,
+                name_uz VARCHAR(255) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
 
         // Таблица городов
         $this->connection->exec("
             CREATE TABLE IF NOT EXISTS cities (
-                id INTEGER PRIMARY KEY,
-                region_id INTEGER NOT NULL,
-                name_ru TEXT NOT NULL,
-                name_uz TEXT NOT NULL,
-                FOREIGN KEY (region_id) REFERENCES regions(id)
-            )
+                id INT PRIMARY KEY,
+                region_id INT NOT NULL,
+                name_ru VARCHAR(255) NOT NULL,
+                name_uz VARCHAR(255) NOT NULL,
+                FOREIGN KEY (region_id) REFERENCES regions(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
 
-        // Таблица резюме (без name-полей)
+        // Таблица резюме
         $this->connection->exec("
             CREATE TABLE IF NOT EXISTS resumes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                age INTEGER NOT NULL,
-                phone TEXT NOT NULL,
-                photo_filename TEXT,
-                region_id INTEGER NOT NULL,
-                city_id INTEGER NOT NULL,
-                job_id INTEGER NOT NULL,
-                language TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (region_id) REFERENCES regions(id),
-                FOREIGN KEY (city_id) REFERENCES cities(id),
-                FOREIGN KEY (job_id) REFERENCES jobs(id)
-            )
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                age INT NOT NULL,
+                phone VARCHAR(50) NOT NULL,
+                photo_filename VARCHAR(255),
+                region_id INT NOT NULL,
+                city_id INT NOT NULL,
+                job_id INT NOT NULL,
+                language VARCHAR(10) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (region_id) REFERENCES regions(id) ON DELETE CASCADE,
+                FOREIGN KEY (city_id) REFERENCES cities(id) ON DELETE CASCADE,
+                FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+                INDEX idx_chat_id (chat_id),
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
     }
     
@@ -115,7 +124,6 @@ class Database
 
     private function seedJobs()
     {
-        // Если уже есть записи — пропускаем
         $count = $this->connection->query("SELECT COUNT(*) FROM jobs")->fetchColumn();
         if ($count > 0) return;
 
@@ -148,7 +156,6 @@ class Database
         $count = $this->connection->query("SELECT COUNT(*) FROM regions")->fetchColumn();
         if ($count > 0) return;
 
-        // key => [name_ru, name_uz]
         $regions = [
             1  => ['Ташкент',                        'Toshkent'],
             2  => ['Ташкентская область',            'Toshkent viloyati'],
@@ -180,9 +187,11 @@ class Database
     private function seedCities()
     {
         $count = $this->connection->query("SELECT COUNT(*) FROM cities")->fetchColumn();
-        if ($count > 0) return;
+        if ($count > 0) {
+            echo "ℹ️ Таблица cities уже заполнена ($count записей)\n";
+            return;
+        }
 
-        // id => region_id => [name_ru, name_uz]
         $cities = [
             // Регион 1 — Ташкент
             101 => [1, 'Чиланзар',       'Chilonzor'],
@@ -358,25 +367,31 @@ class Database
             "INSERT INTO cities (id, region_id, name_ru, name_uz) VALUES (:id, :region_id, :name_ru, :name_uz)"
         );
 
+        $success_count = 0;
+        $error_count = 0;
+
         foreach ($cities as $id => [$region_id, $name_ru, $name_uz]) {
-            $stmt->execute([
-                ':id'        => $id,
-                ':region_id' => $region_id,
-                ':name_ru'   => $name_ru,
-                ':name_uz'   => $name_uz,
-            ]);
+            try {
+                $stmt->execute([
+                    ':id'        => $id,
+                    ':region_id' => $region_id,
+                    ':name_ru'   => $name_ru,
+                    ':name_uz'   => $name_uz,
+                ]);
+                $success_count++;
+            } catch (PDOException $e) {
+                $error_count++;
+                echo "❌ Ошибка при вставке города ID $id ($name_ru): " . $e->getMessage() . "\n";
+            }
         }
 
-        echo "✅ Заполнена таблица cities\n";
+        echo "✅ Заполнена таблица cities: $success_count успешно, $error_count ошибок\n";
     }
     
     // ─────────────────────────────────────────────
     // CRUD для резюме
     // ─────────────────────────────────────────────
     
-    /**
-     * Сохранение резюме (без name-полей)
-     */
     public function saveResume($data)
     {
         try {
@@ -411,9 +426,6 @@ class Database
         }
     }
     
-    /**
-     * Получение всех резюме с JOIN (имена берутся из справочников)
-     */
     public function getAllResumes()
     {
         try {
@@ -450,9 +462,6 @@ class Database
         }
     }
     
-    /**
-     * Получение резюме по chat_id с JOIN
-     */
     public function getResumesByChatId($chat_id)
     {
         try {
@@ -491,9 +500,6 @@ class Database
         }
     }
     
-    /**
-     * Получение резюме по ID с JOIN
-     */
     public function getResumeById($id)
     {
         try {
@@ -531,9 +537,37 @@ class Database
         }
     }
     
-    /**
-     * Удаление резюме по ID
-     */
+    public function updateResume($id, $data)
+    {
+        try {
+            $sql = "UPDATE resumes SET 
+                name = :name,
+                age = :age,
+                phone = :phone,
+                region_id = :region_id,
+                city_id = :city_id,
+                job_id = :job_id
+                WHERE id = :id";
+            
+            $stmt = $this->connection->prepare($sql);
+            $stmt->execute([
+                ':id'         => $id,
+                ':name'       => $data['name'],
+                ':age'        => $data['age'],
+                ':phone'      => $data['phone'],
+                ':region_id'  => $data['region_id'],
+                ':city_id'    => $data['city_id'],
+                ':job_id'     => $data['job_id'],
+            ]);
+            
+            echo "✅ Резюме #$id обновлено\n";
+            return true;
+        } catch (PDOException $e) {
+            echo "❌ Ошибка при обновлении резюме: " . $e->getMessage() . "\n";
+            return false;
+        }
+    }
+    
     public function deleteResume($id)
     {
         try {
@@ -557,17 +591,14 @@ class Database
         try {
             $stats = [];
             
-            // Общее количество
             $stats['total'] = $this->connection
                 ->query("SELECT COUNT(*) FROM resumes")
                 ->fetchColumn();
             
-            // По языкам
             $stats['by_language'] = $this->connection
                 ->query("SELECT language, COUNT(*) as count FROM resumes GROUP BY language")
                 ->fetchAll(PDO::FETCH_ASSOC);
             
-            // По вакансиям (через JOIN с jobs)
             $stats['by_job'] = $this->connection
                 ->query("
                     SELECT j.name_ru AS job_name, COUNT(*) as count
@@ -578,7 +609,6 @@ class Database
                 ")
                 ->fetchAll(PDO::FETCH_ASSOC);
             
-            // По городам (через JOIN с cities)
             $stats['by_city'] = $this->connection
                 ->query("
                     SELECT c.name_ru AS city_name, COUNT(*) as count
@@ -586,6 +616,7 @@ class Database
                     JOIN cities c ON r.city_id = c.id
                     GROUP BY r.city_id
                     ORDER BY count DESC
+                    LIMIT 10
                 ")
                 ->fetchAll(PDO::FETCH_ASSOC);
             
@@ -596,13 +627,6 @@ class Database
         }
     }
 
-    // ─────────────────────────────────────────────
-    // Вспомогательные: получение имён из справочников
-    // ─────────────────────────────────────────────
-
-    /**
-     * Получить название вакансии по id и языку ('ru' | 'uz')
-     */
     public function getJobName(int $job_id, string $lang = 'ru'): ?string
     {
         $col = $lang === 'uz' ? 'name_uz' : 'name_ru';
@@ -611,9 +635,6 @@ class Database
             ->fetchColumn();
     }
 
-    /**
-     * Получить название региона по id и языку
-     */
     public function getRegionName(int $region_id, string $lang = 'ru'): ?string
     {
         $col = $lang === 'uz' ? 'name_uz' : 'name_ru';
@@ -622,14 +643,28 @@ class Database
             ->fetchColumn();
     }
 
-    /**
-     * Получить название города по id и языку
-     */
     public function getCityName(int $city_id, string $lang = 'ru'): ?string
     {
         $col = $lang === 'uz' ? 'name_uz' : 'name_ru';
         return $this->connection
             ->query("SELECT $col FROM cities WHERE id = $city_id")
             ->fetchColumn();
+    }
+    
+    public function getAllRegions()
+    {
+        return $this->connection->query("SELECT * FROM regions ORDER BY name_ru")->fetchAll();
+    }
+    
+    public function getCitiesByRegion($region_id)
+    {
+        $stmt = $this->connection->prepare("SELECT * FROM cities WHERE region_id = :region_id ORDER BY name_ru");
+        $stmt->execute([':region_id' => $region_id]);
+        return $stmt->fetchAll();
+    }
+    
+    public function getAllJobs()
+    {
+        return $this->connection->query("SELECT * FROM jobs ORDER BY name_ru")->fetchAll();
     }
 }
