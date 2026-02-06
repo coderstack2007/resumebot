@@ -391,78 +391,80 @@ class RuInfoHandler
     }
 
     // Обработчик фотографии - ВАЖНО! Сохраняем file_id
-    public static function handlePhoto($telegram, $chat_id, $photo_array, $message_id, &$user_states)
-    {
-        if (!isset($user_states[$chat_id]) || $user_states[$chat_id]['step'] !== 4) {
-            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => '❌ Ошибка: отправьте фото в нужный момент.',
-                'reply_markup' => LanguageKeyboard::getBackKeyboard()
-            ]);
-            return;
+  public static function handlePhoto($telegram, $chat_id, $photo_array, $message_id, &$user_states) {
+    if (!isset($user_states[$chat_id]) || $user_states[$chat_id]['step'] !== 4) {
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+        $telegram->sendMessage([
+            'chat_id' => $chat_id,
+            'text' => '❌ Ошибка: отправьте фото в нужный момент.',
+            'reply_markup' => LanguageKeyboard::getBackKeyboard()
+        ]);
+        return;
+    }
+
+    try {
+        $photo = end($photo_array);
+        $file_id = $photo['file_id'];
+        
+        // Сохраняем file_id
+        $user_states[$chat_id]['photo_file_id'] = $file_id;
+        
+        $file_info = $telegram->getFile(['file_id' => $file_id]);
+        $file_path = $file_info['file_path'];
+        
+        $token = \App\BotSettings::TOKEN;
+        $file_url = "https://api.telegram.org/file/bot{$token}/{$file_path}";
+        
+        // Используем cURL
+        $ch = curl_init($file_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        
+        $file_content = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+        
+        if ($file_content === false || $http_code !== 200) {
+            throw new \Exception("HTTP код: $http_code, Ошибка: $error");
         }
         
-        try {
-            // Получаем самое большое фото из массива
-            $photo = end($photo_array);
-            $file_id = $photo['file_id'];
-            
-            // СОХРАНЯЕМ file_id для последующего использования
-            $user_states[$chat_id]['photo_file_id'] = $file_id;
-            
-            // Получаем информацию о файле
-            $file_info = $telegram->getFile(['file_id' => $file_id]);
-            $file_path = $file_info['file_path'];
-            
-            // Скачиваем файл
-            $token = \App\BotSettings::TOKEN;
-            $file_url = "https://api.telegram.org/file/bot{$token}/{$file_path}";
-            $file_content = file_get_contents($file_url);
-            
-            if ($file_content === false) {
-                throw new \Exception('Не удалось скачать файл');
-            }
-            
-            // Генерируем уникальное имя файла
-            $filename = $chat_id . '_' . time() . '.jpg';
-            $save_path = __DIR__ . '/../../src/images/' . $filename;
-            
-            // Создаём папку если её нет
-            $dir = dirname($save_path);
-            if (!is_dir($dir)) {
-                mkdir($dir, 0777, true);
-            }
-            
-            // Сохраняем файл
-            if (file_put_contents($save_path, $file_content) === false) {
-                throw new \Exception('Не удалось сохранить файл');
-            }
-            
-            // Сохраняем имя файла в состоянии
-            $user_states[$chat_id]['photo_filename'] = $filename;
-            $user_states[$chat_id]['step'] = 5;
-            
-            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
-            
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => "✅ Фото получено!\n\n📍 Теперь выберите ваш регион:",
-                'reply_markup' => CitiesKeyboard::getRegionsKeyboard()
-            ]);
-            
-        } catch (\Exception $e) {
-            echo "❌ Ошибка при обработке фото: " . $e->getMessage() . "\n";
-            
-            BackHandler::deleteMessage($telegram, $chat_id, $message_id);
-            
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => '❌ Произошла ошибка при обработке фото. Попробуйте снова.',
-                'reply_markup' => LanguageKeyboard::getBackKeyboard()
-            ]);
+        $filename = $chat_id . '_' . time() . '.jpg';
+        $save_path = __DIR__ . '/../../src/images/' . $filename;
+        
+        $dir = dirname($save_path);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
         }
+        
+        if (file_put_contents($save_path, $file_content) === false) {
+            throw new \Exception('Не удалось сохранить файл');
+        }
+        
+        $user_states[$chat_id]['photo_filename'] = $filename;
+        $user_states[$chat_id]['step'] = 5;
+        
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+        
+        $telegram->sendMessage([
+            'chat_id' => $chat_id,
+            'text' => "✅ Фото получено!\n\n📍 Теперь выберите ваш регион:",
+            'reply_markup' => CitiesKeyboard::getRegionsKeyboard()
+        ]);
+        
+    } catch (\Exception $e) {
+        echo "❌ Ошибка при обработке фото: " . $e->getMessage() . "\n";
+        BackHandler::deleteMessage($telegram, $chat_id, $message_id);
+        
+        $telegram->sendMessage([
+            'chat_id' => $chat_id,
+            'text' => '❌ Произошла ошибка при обработке фото. Попробуйте снова.',
+            'reply_markup' => LanguageKeyboard::getBackKeyboard()
+        ]);
     }
+}
     
     private static function saveToDatabase($chat_id, $data)
     {
