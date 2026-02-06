@@ -1,5 +1,5 @@
 <?php
-namespace App\Jobs\Uz;
+namespace App\Jobs\uz;
 
 class Jobs
 {

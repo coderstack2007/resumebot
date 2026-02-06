@@ -1,7 +1,7 @@
 <?php
 namespace App\Keyboards\uz;
 
-use App\Jobs\Uz\Jobs;
+use App\Jobs\uz\Jobs;
 
 class JobsKeyboard
 {

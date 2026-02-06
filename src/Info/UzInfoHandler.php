@@ -8,7 +8,7 @@ use App\Keyboards\uz\JobsKeyboard;
 use App\Keyboards\uz\NumberKeyboard;
 use App\Checking\uz\Check;
 use App\Cities\uz\Cities;
-use App\Jobs\Uz\Jobs;
+use App\Jobs\uz\Jobs;
 use App\Backs\uz\BackHandler;
 use App\Database;
 
@@ -151,7 +151,16 @@ class UzInfoHandler
             }
             
             $file_url = "https://api.telegram.org/file/bot" . \App\BotSettings::TOKEN . "/$file_path";
-            $file_content = file_get_contents($file_url);
+            $ch = curl_init($file_url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // На случай проблем с SSL
+            $file_content = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($ch);
+            curl_close($ch);
+            
             
             if ($file_content === false) {
                 throw new \Exception("Не удалось скачать файл");

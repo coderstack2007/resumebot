@@ -8,7 +8,7 @@ use App\Keyboards\ru\JobsKeyboard;
 use App\Keyboards\ru\NumberKeyboard;
 use App\Checking\ru\Check;
 use App\Cities\ru\Cities;
-use App\Jobs\Ru\Jobs;
+use App\Jobs\ru\Jobs;
 use App\Backs\ru\BackHandler;
 use App\Database;
 
@@ -391,7 +391,8 @@ class RuInfoHandler
     }
 
     // Обработчик фотографии - ВАЖНО! Сохраняем file_id
-  public static function handlePhoto($telegram, $chat_id, $photo_array, $message_id, &$user_states) {
+ public static function handlePhoto($telegram, $chat_id, $photo_array, $message_id, &$user_states)
+{
     if (!isset($user_states[$chat_id]) || $user_states[$chat_id]['step'] !== 4) {
         BackHandler::deleteMessage($telegram, $chat_id, $message_id);
         $telegram->sendMessage([
@@ -401,48 +402,68 @@ class RuInfoHandler
         ]);
         return;
     }
-
+    
     try {
+        // Получаем самое большое фото из массива
         $photo = end($photo_array);
         $file_id = $photo['file_id'];
         
-        // Сохраняем file_id
+        // СОХРАНЯЕМ file_id для последующего использования
         $user_states[$chat_id]['photo_file_id'] = $file_id;
         
+        // Получаем информацию о файле
         $file_info = $telegram->getFile(['file_id' => $file_id]);
+        
+        if (!isset($file_info['file_path'])) {
+            throw new \Exception('file_path отсутствует в ответе API');
+        }
+        
         $file_path = $file_info['file_path'];
         
+        // Скачиваем файл используя cURL
         $token = \App\BotSettings::TOKEN;
         $file_url = "https://api.telegram.org/file/bot{$token}/{$file_path}";
         
-        // Используем cURL
         $ch = curl_init($file_url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // На случай проблем с SSL
         $file_content = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
+        $curl_error = curl_error($ch);
         curl_close($ch);
         
         if ($file_content === false || $http_code !== 200) {
-            throw new \Exception("HTTP код: $http_code, Ошибка: $error");
+            throw new \Exception('Не удалось скачать файл. HTTP: ' . $http_code . ', Error: ' . $curl_error);
         }
         
+        // Генерируем уникальное имя файла
         $filename = $chat_id . '_' . time() . '.jpg';
-        $save_path = __DIR__ . '/../../src/images/' . $filename;
         
+        // ИСПРАВЛЕННЫЙ ПУТЬ: из /src/Info/ идем на уровень вверх в /src/, затем в /images/
+        $save_path = __DIR__ . '/../images/' . $filename;
+        
+        // Создаём папку если её нет
         $dir = dirname($save_path);
         if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
+            if (!mkdir($dir, 0755, true)) {
+                throw new \Exception('Не удалось создать директорию: ' . $dir);
+            }
         }
         
-        if (file_put_contents($save_path, $file_content) === false) {
+        // Проверяем права на запись
+        if (!is_writable($dir)) {
+            throw new \Exception('Нет прав на запись в директорию: ' . $dir);
+        }
+        
+        // Сохраняем файл
+        $bytes_written = file_put_contents($save_path, $file_content);
+        if ($bytes_written === false) {
             throw new \Exception('Не удалось сохранить файл');
         }
         
+        // Сохраняем имя файла в состоянии
         $user_states[$chat_id]['photo_filename'] = $filename;
         $user_states[$chat_id]['step'] = 5;
         
@@ -455,17 +476,19 @@ class RuInfoHandler
         ]);
         
     } catch (\Exception $e) {
-        echo "❌ Ошибка при обработке фото: " . $e->getMessage() . "\n";
+        $error_msg = $e->getMessage();
+        error_log("❌ Ошибка при обработке фото для chat_id $chat_id: " . $error_msg);
+        
         BackHandler::deleteMessage($telegram, $chat_id, $message_id);
         
         $telegram->sendMessage([
             'chat_id' => $chat_id,
             'text' => '❌ Произошла ошибка при обработке фото. Попробуйте снова.',
-            'reply_markup' => LanguageKeyboard::getBackKeyboard()
+            'reply_markup' => NameKeyboard::getBackName()
         ]);
     }
 }
-    
+
     private static function saveToDatabase($chat_id, $data)
     {
         try {
