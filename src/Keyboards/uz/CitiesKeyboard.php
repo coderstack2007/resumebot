@@ -86,4 +86,25 @@ class CitiesKeyboard
             'one_time_keyboard' => false
         ]);
     }
+     public static function getConfirmationKeyboard()
+    {
+        $keyboard = [
+            'keyboard' => [
+                [['text' => '✅ Ha, yuborish']],
+                [['text' => '⬅️ Orqaga']]
+            ],
+            'resize_keyboard' => true,
+            'one_time_keyboard' => false
+        ];
+        
+        return json_encode($keyboard);
+    }
+    
+    /**
+     * Проверка, является ли текст кнопкой подтверждения
+     */
+    public static function isConfirmButton($text): bool
+    {
+        return $text === '✅ Ha, yuborish';
+    }
 }

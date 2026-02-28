@@ -4,15 +4,11 @@ namespace App\Backs\ru;
 use App\Keyboards\ru\LanguageKeyboard;
 use App\Keyboards\ru\NameKeyboard;
 use App\Keyboards\ru\CitiesKeyboard;
-use App\Keyboards\ru\JobsKeyboard;
 use App\Keyboards\ru\NumberKeyboard;
 use App\Checking\ru\Check;
 
 class BackHandler
 {
-    /**
-     * Проверка, является ли текст кнопкой "Назад"
-     */
     public static function isBackButton($user_text): bool
     {
         return in_array($user_text, [
@@ -23,35 +19,24 @@ class BackHandler
         ]);
     }
     
-    /**
-     * Обработка всех кнопок "Назад"
-     */
     public static function handleBackButton($telegram, $chat_id, $user_text, $message_id, &$user_states)
     {
-        // Удаляем сообщение пользователя
         self::deleteMessage($telegram, $chat_id, $message_id);
         
         switch ($user_text) {
             case '⬅️ Назад к выбору языка':
                 return self::handleBackToLanguage($telegram, $chat_id, $user_states);
-                
             case '⬅️ Назад':
                 return self::handleBack($telegram, $chat_id, $user_states);
-                
             case '⬅️ Назад к регионам':
                 return self::handleBackToRegions($telegram, $chat_id, $user_states);
-                
             case '⬅️ Назад к городам':
                 return self::handleBackToCities($telegram, $chat_id, $user_states);
-                
             default:
                 return false;
         }
     }
     
-    /**
-     * Обработка кнопки "Назад к выбору языка"
-     */
     private static function handleBackToLanguage($telegram, $chat_id, &$user_states)
     {
         $user_states[$chat_id] = [
@@ -67,9 +52,6 @@ class BackHandler
         return true;
     }
     
-    /**
-     * Обработка кнопки "Назад" (универсальная)
-     */
     private static function handleBack($telegram, $chat_id, &$user_states)
     {
         if (!isset($user_states[$chat_id])) {
@@ -79,7 +61,7 @@ class BackHandler
         $step = $user_states[$chat_id]['step'];
         
         if ($step == 2) {
-            // Возврат к вводу имени
+            // Назад к вводу имени
             $user_states[$chat_id]['step'] = 1;
             unset($user_states[$chat_id]['name']);
             unset($user_states[$chat_id]['age']);
@@ -89,8 +71,9 @@ class BackHandler
                 'text' => "Пожалуйста, введите ваше ФИО:",
                 'reply_markup' => LanguageKeyboard::getBackKeyboard()
             ]);
+            
         } elseif ($step == 3) {
-            // Возврат к вводу возраста
+            // Назад к вводу возраста
             $user_states[$chat_id]['step'] = 2;
             unset($user_states[$chat_id]['phone']);
             
@@ -99,18 +82,21 @@ class BackHandler
                 'text' => "🎂 Теперь введите ваш возраст (15-60 лет):",
                 'reply_markup' => NameKeyboard::getBackName()
             ]);
+            
         } elseif ($step == 4) {
-            // Возврат к вводу телефона — нужна кнопка "Поделиться номером"
+            // Назад к вводу телефона
             $user_states[$chat_id]['step'] = 3;
             unset($user_states[$chat_id]['photo_filename']);
+            unset($user_states[$chat_id]['photo_file_id']);
             
             $telegram->sendMessage([
                 'chat_id' => $chat_id,
                 'text' => Check::getAgeAcceptedMessage(),
                 'reply_markup' => NumberKeyboard::getPhoneKeyboard()
             ]);
+            
         } elseif ($step == 5) {
-            // Возврат к загрузке фото
+            // Назад к загрузке фото
             $user_states[$chat_id]['step'] = 4;
             unset($user_states[$chat_id]['region_id']);
             unset($user_states[$chat_id]['city_id']);
@@ -120,24 +106,35 @@ class BackHandler
                 'text' => Check::getPhotoRequestMessage(),
                 'reply_markup' => NameKeyboard::getBackName()
             ]);
-        } elseif ($step == 8) {
-            // Возврат с подтверждения на выбор вакансии
-            $user_states[$chat_id]['step'] = 7;
-            unset($user_states[$chat_id]['job_id']);
             
-            $telegram->sendMessage([
-                'chat_id' => $chat_id,
-                'text' => "💼 Выберите вакансию, на которую хотите откликнуться:",
-                'reply_markup' => JobsKeyboard::getJobsKeyboard()
-            ]);
+        } elseif ($step == 7) {
+            // Назад к выбору города (с шага подтверждения)
+            $region_id = $user_states[$chat_id]['region_id'] ?? null;
+            
+            if ($region_id) {
+                $user_states[$chat_id]['step'] = 6;
+                unset($user_states[$chat_id]['city_id']);
+                
+                $telegram->sendMessage([
+                    'chat_id' => $chat_id,
+                    'text' => "🏙 Выберите ваш город:",
+                    'reply_markup' => CitiesKeyboard::getCitiesKeyboard($region_id)
+                ]);
+            } else {
+                // Если нет region_id, возвращаемся к выбору региона
+                $user_states[$chat_id]['step'] = 5;
+                
+                $telegram->sendMessage([
+                    'chat_id' => $chat_id,
+                    'text' => "📍 Выберите ваш регион:",
+                    'reply_markup' => CitiesKeyboard::getRegionsKeyboard()
+                ]);
+            }
         }
         
         return true;
     }
     
-    /**
-     * Обработка кнопки "Назад к регионам"
-     */
     private static function handleBackToRegions($telegram, $chat_id, &$user_states)
     {
         if (!isset($user_states[$chat_id])) {
@@ -147,7 +144,6 @@ class BackHandler
         $user_states[$chat_id]['step'] = 5;
         unset($user_states[$chat_id]['region_id']);
         unset($user_states[$chat_id]['city_id']);
-        unset($user_states[$chat_id]['job_id']);
         
         $telegram->sendMessage([
             'chat_id' => $chat_id,
@@ -158,9 +154,6 @@ class BackHandler
         return true;
     }
     
-    /**
-     * Обработка кнопки "Назад к городам"
-     */
     private static function handleBackToCities($telegram, $chat_id, &$user_states)
     {
         if (!isset($user_states[$chat_id])) {
@@ -175,7 +168,6 @@ class BackHandler
         
         $user_states[$chat_id]['step'] = 6;
         unset($user_states[$chat_id]['city_id']);
-        unset($user_states[$chat_id]['job_id']);
         
         $telegram->sendMessage([
             'chat_id' => $chat_id,
@@ -186,9 +178,6 @@ class BackHandler
         return true;
     }
     
-    /**
-     * Удаление сообщения с обработкой ошибок
-     */
     public static function deleteMessage($telegram, $chat_id, $message_id)
     {
         try {

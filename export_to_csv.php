@@ -71,7 +71,7 @@ try {
             $resume['region_name'],
             $resume['city_id'],
             $resume['city_name'],
-            $resume['job_id'],
+        
             $resume['job_name'],
             $resume['language'] === 'ru' ? 'Русский' : 'Узбекский',
             $resume['created_at']

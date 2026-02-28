@@ -416,11 +416,7 @@ $resumes_page = array_slice($resumes, $offset, $per_page);
             </div>
             <?php endforeach; ?>
             
-            <div class="stat-card">
-                <i class="fas fa-briefcase"></i>
-                <h3><?= count($stats['by_job']) ?></h3>
-                <p>Типов вакансий</p>
-            </div>
+            
         </div>
         
         <?php if ($message): ?>
@@ -452,10 +448,7 @@ $resumes_page = array_slice($resumes, $offset, $per_page);
                     
                     <div class="name"><?= htmlspecialchars($resume['name']) ?></div>
                     
-                    <div class="job-title">
-                        <i class="fas fa-briefcase"></i>
-                        <?= htmlspecialchars($resume['job_name_ru']) ?>
-                    </div>
+               
                     
                     <div class="details">
                         <div class="detail-row">
