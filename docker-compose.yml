@@ -1,0 +1,27 @@
+services:
+
+  # ─── Bot (long-polling mode) ────────────────────────────────────────────────
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${APP_ENV:-development}
+    container_name: resume_bot
+    restart: unless-stopped
+    volumes:
+      - .:/app                      # hot-reload in dev
+      - vendor_cache:/app/vendor    # persist vendor between restarts
+    networks:
+      - bot_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  vendor_cache:
+
+networks:
+  bot_network:
+    driver: bridge

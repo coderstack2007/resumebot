@@ -1,0 +1,6 @@
+[27-Feb-2026 20:38:21 UTC] PHP Fatal error:  Uncaught Error: Class "App\Info\JobsKeyboard" not found in /Users/asilbek/Desktop/resumebot/src/Info/RuInfoHandler.php:373
+Stack trace:
+#0 /Users/asilbek/Desktop/resumebot/src/Info/RuInfoHandler.php(57): App\Info\RuInfoHandler::handleCitySelection(Object(Telegram\Bot\Api), 1805353005, '\xD0\x9C\xD0\xB0\xD1\x80\xD1\x85\xD0\xB0\xD0\xBC\xD0\xB0\xD1...', 3955, Array)
+#1 /Users/asilbek/Desktop/resumebot/polling.php(422): App\Info\RuInfoHandler::handleUserInput(Object(Telegram\Bot\Api), 1805353005, '\xD0\x9C\xD0\xB0\xD1\x80\xD1\x85\xD0\xB0\xD0\xBC\xD0\xB0\xD1...', 3955, Array)
+#2 {main}
+  thrown in /Users/asilbek/Desktop/resumebot/src/Info/RuInfoHandler.php on line 373
